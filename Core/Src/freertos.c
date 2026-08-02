@@ -288,7 +288,8 @@ void StartTask03(void *argument)
 /* USER CODE END Header_StartTask04 */
 void StartTask04(void *argument)
 {
-  /* USER CODE BEGIN StartTask04 */
+ 
+    /* USER CODE BEGIN StartTask04 */
        osDelay(1000);
        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   

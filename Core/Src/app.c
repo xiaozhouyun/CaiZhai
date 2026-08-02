@@ -131,9 +131,11 @@ void App_RunCurrentMode(void)
 //             osDelay(1000U);
 //         PCA9685_Set180AngleSmooth(7U, 0.0f, 100U, 10U);
 //         PCA9685_Set180AngleSmooth(1U, 20.0f, 500U, 10U);
-            PCA9685_Set180Angle(1U,-80.0f);
+            PCA9685_Set180AngleSmooth(7U,0.0f, 100U, 10U);
 
              osDelay(1000U);
+           PCA9685_Set180AngleSmooth(7U,20.0f, 100U, 10U);
+        
             App_SetMode(APP_MODE_IDLE);
 
             break;

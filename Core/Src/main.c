@@ -122,6 +122,7 @@ int main(void)
  {
    Error_Handler();
  }
+ PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
   uint32_t hwt_wait_start;
   // HWT101_HAL_Init();
   g_hwt101_data_ready = 0;
