@@ -6,13 +6,6 @@
 #define TIANCAN_LINE_SIZE     64U
 #define TIANCAN_NAME_SIZE     12U
 
-typedef struct {
-    const char *name;
-    float *kp;
-    float *ki;
-    float *kd;
-} TiancanPid_t;
-
 static TiancanPid_t s_pids[TIANCAN_MAX_PID_COUNT];
 static uint8_t s_pid_count;
 static char s_line[TIANCAN_LINE_SIZE];
@@ -24,15 +17,18 @@ static volatile bool s_line_ready;
  * @param  name PID 控制器标识名称（如 "shoot", "align"）
  * @param  kp   指向 Kp 增益变量的指针（若不调节可传 NULL）
  * @param  ki   指向 Ki 增益变量的指针（若不调节可传 NULL）
- * @param  kd   指向 Kd 增益变量的指针（若不调节可传 NULL）
+ * @param  kp     指向 Kp 增益变量的指针（若不调节可传 NULL）
+ * @param  ki     指向 Ki 增益变量的指针（若不调节可传 NULL）
+ * @param  kd     指向 Kd 增益变量的指针（若不调节可传 NULL）
+ * @param  target 指向目标期望值变量的指针（若不调节可传 NULL）
  * @return true 注册成功，false 注册失败（参数非法/重复注册/超出数组上限）
  */
-bool Tiancan_RegisterPid(const char *name, float *kp, float *ki, float *kd)
+bool Tiancan_RegisterPid(const char *name, float *kp, float *ki, float *kd, float *target)
 {
     uint8_t i;
 
-    /* 参数有效性校验：名称不能为空，且三个增益指针不能全为 NULL */
-    if (name == NULL || (kp == NULL && ki == NULL && kd == NULL)) {
+    /* 参数有效性校验：名称不能为空，且参数指针不能全为 NULL */
+    if (name == NULL || (kp == NULL && ki == NULL && kd == NULL && target == NULL)) {
         return false;
     }
 
@@ -48,11 +44,12 @@ bool Tiancan_RegisterPid(const char *name, float *kp, float *ki, float *kd)
         return false;
     }
 
-    /* 将 PID 参数指针信息写入注册表 */
+    /* 将 PID 参数及目标值指针信息写入注册表 */
     s_pids[s_pid_count].name = name;
     s_pids[s_pid_count].kp = kp;
     s_pids[s_pid_count].ki = ki;
     s_pids[s_pid_count].kd = kd;
+    s_pids[s_pid_count].target = target;
     ++s_pid_count;
 
     return true;
@@ -87,13 +84,15 @@ static void Tiancan_SetGain(TiancanPid_t *pid, const char *gain, float value)
         *pid->ki = value;
     } else if (strcmp(gain, "kd") == 0 && pid->kd != NULL) {
         *pid->kd = value;
+    } else if ((strcmp(gain, "tar") == 0 || strcmp(gain, "target") == 0) && pid->target != NULL) {
+        *pid->target = value;
     }
 }
 
 void Tiancan_Process(void)
 {
     char name[TIANCAN_NAME_SIZE];
-    char gain[3];
+    char gain[7];
     float value;
     uint8_t i;
 
@@ -103,7 +102,7 @@ void Tiancan_Process(void)
 
     s_line_ready = false;
     s_line_length = 0U;
-    if (sscanf(s_line, "set %11s %2s %f", name, gain, &value) != 3) {
+    if (sscanf(s_line, "set %11s %6s %f", name, gain, &value) != 3) {
         return;
     }
 

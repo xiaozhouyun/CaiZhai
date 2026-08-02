@@ -9,7 +9,22 @@
 
 /* 旋转对齐控制 PID 及前馈参数 */
 static float align_kp = 2.8f;
+static float align_ki = 0.0f;
 static float align_kd = 0.3f;
+static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
+
+/** 
+ * @brief 旋转对齐角度 PID 全局变量（通道 1）
+ * 包含了 Navigation_HandleTargetAlign 函数中使用的 PID 控制参数与目标值
+ */
+TiancanPid_t anglepid = {
+    .name   = "anglepid",
+    .kp     = &align_kp,
+    .ki     = &align_ki,
+    .kd     = &align_kd,
+    .target = &target_yaw
+};
+
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐状态基础静态摩擦力前馈控制量 */
 #define ALIGN_FF_THRESH           0.15f         /**< 前馈启动阈值（当角度偏差大于此值时使用前馈） */
 #define MAX_ANGULAR               2.0f          /**< 旋转对齐状态下最大角速度限制 (rad/s) */
@@ -58,9 +73,10 @@ static void Navigation_RegisterTiancanPids(void)
     static bool registered;
 
     if (!registered) {
-        (void)Tiancan_RegisterPid("align", &align_kp, NULL, &align_kd);
-        (void)Tiancan_RegisterPid("move", &move_kp, NULL, &move_kd);
-        (void)Tiancan_RegisterPid("arrived", &arrived_kp, NULL, &arrived_kd);
+        /* 通道 1：注册旋转对齐角度 PID (anglepid，包含 target_yaw) */
+        (void)Tiancan_RegisterPid(anglepid.name, anglepid.kp, anglepid.ki, anglepid.kd, anglepid.target);
+        (void)Tiancan_RegisterPid("move", &move_kp, NULL, &move_kd, NULL);
+        (void)Tiancan_RegisterPid("arrived", &arrived_kp, NULL, &arrived_kd, NULL);
         registered = true;
     }
 }
@@ -204,7 +220,6 @@ static void Navigation_HandleIdle(void)
 static void Navigation_HandleTargetAlign(void)
 {
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
-    static float target_yaw;
     static float last_err;
     static TickType_t last_time;
     float err;
@@ -217,10 +232,10 @@ static void Navigation_HandleTargetAlign(void)
         float heading_angle = atan2f(target.x - start.x, target.y - start.y);
         if (s_is_reverse_mode) {
             /* 倒车模式：车尾正对目标点 */
-            target_yaw = Navigation_NormalizeRad(heading_angle + NAV_PI);
+            *anglepid.target = Navigation_NormalizeRad(heading_angle + NAV_PI);
         } else {
             /* 前进模式：车头正对目标点 */
-            target_yaw = heading_angle;
+            *anglepid.target = heading_angle;
         }
         last_err = 0.0f;
         last_time = xTaskGetTickCount();
@@ -228,7 +243,7 @@ static void Navigation_HandleTargetAlign(void)
     last_state = NAVIGATION_STATE_TARGET_ALIGN;
 
     /* 偏差角度 = 期望角(rad) - 当前角度(rad) */
-    err = Navigation_NormalizeRad(target_yaw - g_robot_pos.yaw * NAV_PI / 180.0f);
+    err = Navigation_NormalizeRad(*anglepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
     
     /* 偏差角度小于判定门限，说明朝向已对准目标点，进入直线行进状态 */
     if (fabsf(err) < ALIGN_ERR_THRESH) {
@@ -243,8 +258,8 @@ static void Navigation_HandleTargetAlign(void)
         dt = 0.01f;
     }
 
-    /* PD闭环反馈控制旋转 */
-    angular_speed = -(align_kp * err + align_kd * (err - last_err) / dt);
+    /* PD闭环反馈控制旋转（使用 anglepid 全局变量中的 PID 参数） */
+    angular_speed = -((*anglepid.kp) * err + (*anglepid.kd) * (err - last_err) / dt);
     
     /* 引入前馈常数，以克服电机及地面的死区摩擦力，提高调节速度 */
     if (fabsf(err) > ALIGN_FF_THRESH) {

@@ -2,6 +2,7 @@
 #define __NAVIGATION_H
 
 #include "main.h"
+#include "tiancan.h"
 #include <stdbool.h>
 
 /**
@@ -59,6 +60,7 @@ struct move {
 /* 全局导出变量 */
 extern volatile position_t g_robot_pos;         /**< 机器人当前位置（实时里程计累积） */
 extern Navigation_State_t navigation_state;     /**< 当前导航状态 */
+extern TiancanPid_t anglepid;                   /**< 旋转对齐角度 PID 全局变量（对应 Navigation_HandleTargetAlign 中的角度控制） */
 extern struct move speed;                       /**< 速度控制结构体 */
 extern struct move angle_speed;                 /**< 角速度控制结构体 */
 extern float nav_yaw_zero_deg;                  /**< 零点偏差 */
