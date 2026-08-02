@@ -283,7 +283,7 @@ void StartTask04(void *argument)
   /* USER CODE BEGIN StartTask04 */
   /* Infinite loop */
   App_Init();
-            osDelay(1000);
+  osDelay(1000);
     PCA9685_Set180Angle(1U,-80.0f);
 
   for(;;)
@@ -356,7 +356,7 @@ void StartTask07(void *argument)
 /* USER CODE BEGIN Application */
 
 /**
-  * @brief  FreeRTOS Tick Hook — called from tick ISR context.
+  * @brief  FreeRTOS Tick Hook �? called from tick ISR context.
   *         Toggle PB2 for oscilloscope heartbeat monitoring.
   *         Must be fast and must NOT call blocking FreeRTOS APIs.
   */
