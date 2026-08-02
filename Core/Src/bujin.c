@@ -66,7 +66,7 @@ static void Emm_V5_Pos_Control_ByPulse(uint8_t addr, uint8_t dir, uint16_t vel, 
    };
 
    Emm_Send(cmd, sizeof(cmd));
-   HAL_Delay(5);
+   osDelay(5);
 }
 
 /**
@@ -117,7 +117,7 @@ void Emm_V5_Vel_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, bo
    };
 
    Emm_Send(cmd, sizeof(cmd));
-   HAL_Delay(1);
+  osDelay(1);
 }
 
 /**
@@ -168,7 +168,7 @@ void Emm_V5_Synchronous_motion(uint8_t addr)
    /* 先用 snF=true 下发动作，再用本函数发送同步触发命令。 */
    uint8_t cmd[4] = {addr, 0xFF, 0x66, 0x6B};
    Emm_Send(cmd, sizeof(cmd));
-   HAL_Delay(1);
+   osDelay(1);
 }
 
 /**
@@ -226,3 +226,90 @@ void motor_to_angle_control(uint8_t addr, float angle, uint16_t vel, uint8_t acc
 
    Emm_V5_Pos_Control_ByPulse(addr, dir, vel, acc, (uint32_t)(BUJIN_PULSE_PER_REV * angle / 360.0f), false, false);
 }
+
+/* ====== 回零 / 零点管理 ====== */
+/**
+ * @brief  将当前单圈位置设为回零零点
+ * @param  addr 电机地址
+ * @param  save true 保存到驱动器，false 仅临时设置
+ */
+void Emm_V5_Set_Zero(uint8_t addr, bool save)
+{
+   /* 帧格式：地址 + 0x93 + 0x88 + 存储标志 + 0x6B */
+   uint8_t cmd[5] = {addr, 0x93, 0x88, (uint8_t)save, 0x6B};
+   Emm_Send(cmd, sizeof(cmd));
+}
+/**
+ * @brief  触发回零
+ * @param  addr 电机地址
+ * @param  mode 回零模式，见 Emm_V5_Zero_Mode_t
+ * @param  snF  多机同步标志，true 表示等待同步触发，false 表示立即执行
+ */
+void Emm_V5_Trigger_Zero(uint8_t addr, Emm_V5_Zero_Mode_t mode, bool snF)
+{
+   /* 帧格式：地址 + 0x9A + 回零模式 + 同步标志 + 0x6B */
+   uint8_t cmd[5] = {addr, 0x9A, (uint8_t)mode, (uint8_t)snF, 0x6B};
+   Emm_Send(cmd, sizeof(cmd));
+}
+
+/**
+ * @brief  读取原点回零参数
+ * @param  addr 电机地址
+ * @note   返回帧由 UART 接收处理逻辑解析
+ */
+void Emm_V5_Read_Zero_Params(uint8_t addr)
+{
+   uint8_t cmd[3] = {addr, 0x22, 0x6B};
+   Emm_Send(cmd, sizeof(cmd));
+}
+
+/**
+ * @brief  修改原点回零参数
+ * @param  addr   电机地址
+ * @param  save   true 保存到驱动器，false 仅临时设置
+ * @param  params 回零参数，NULL 时不发送命令
+ */
+void Emm_V5_Modify_Zero_Params(uint8_t addr, bool save, const Emm_V5_Zero_Params_t *params)
+{
+   uint8_t cmd[20];
+
+   if (params == NULL)
+   {
+       return;
+   }
+
+   /* 帧格式：地址 + 0x4C + 0xAE + 保存标志 + 回零参数 + 0x6B */
+   cmd[0] = addr;
+   cmd[1] = 0x4C;
+   cmd[2] = 0xAE;
+   cmd[3] = (uint8_t)save;
+   cmd[4] = (uint8_t)params->mode;
+   cmd[5] = params->direction;
+   cmd[6] = (uint8_t)(params->speed_rpm >> 8);
+   cmd[7] = (uint8_t)params->speed_rpm;
+   cmd[8] = (uint8_t)(params->timeout_ms >> 24);
+   cmd[9] = (uint8_t)(params->timeout_ms >> 16);
+   cmd[10] = (uint8_t)(params->timeout_ms >> 8);
+   cmd[11] = (uint8_t)params->timeout_ms;
+   cmd[12] = (uint8_t)(params->collision_rpm >> 8);
+   cmd[13] = (uint8_t)params->collision_rpm;
+   cmd[14] = (uint8_t)(params->collision_ma >> 8);
+   cmd[15] = (uint8_t)params->collision_ma;
+   cmd[16] = (uint8_t)(params->collision_ms >> 8);
+   cmd[17] = (uint8_t)params->collision_ms;
+   cmd[18] = (uint8_t)params->auto_trigger;
+   cmd[19] = 0x6B;
+   Emm_Send(cmd, sizeof(cmd));
+}
+
+/**
+ * @brief  读取回零状态标志位
+ * @param  addr 电机地址
+ * @note   返回帧由 UART 接收处理逻辑解析
+ */
+void Emm_V5_Read_Zero_Status(uint8_t addr)
+{
+   uint8_t cmd[3] = {addr, 0x3B, 0x6B};
+   Emm_Send(cmd, sizeof(cmd));
+}
+

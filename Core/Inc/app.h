@@ -54,7 +54,7 @@ bool App_IsRunning(void);
  * @brief 串口指令接收处理函数，用于解析外部启动/停止指令
  * @param data 接收到的串口数据字节 ('a'/'A' 启动, 't'/'T' 停止)
  */
-void App_CommandUartRxByte(uint8_t data);
+void vofaRxbyte(uint8_t data);
 
 /**
  * @brief  C区环形拓扑多目标点最短路径规划与导航执行函数

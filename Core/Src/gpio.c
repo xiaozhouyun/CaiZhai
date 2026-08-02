@@ -52,7 +52,14 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, OLED_SDA_Pin|OLED_SCL_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, user_led_Pin|OLED_SDA_Pin|OLED_SCL_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin : user_led_Pin */
+  GPIO_InitStruct.Pin = user_led_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(user_led_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OLED_SDA_Pin OLED_SCL_Pin */
   GPIO_InitStruct.Pin = OLED_SDA_Pin|OLED_SCL_Pin;

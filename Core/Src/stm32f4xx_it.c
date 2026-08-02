@@ -339,7 +339,7 @@ void USART6_IRQHandler(void)
   if (__HAL_UART_GET_FLAG(&huart6, UART_FLAG_RXNE) != RESET)
   {
     uint8_t data = (uint8_t)(huart6.Instance->DR & 0xFF);
-    App_CommandUartRxByte(data);
+    vofaRxbyte(data);
     return;
   }
 

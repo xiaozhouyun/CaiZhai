@@ -3,7 +3,7 @@
     "files.autoGuessEncoding": true,
     "C_Cpp.intelliSenseEngine": "default",
     "files.autoSave": "afterDelay",
-    "files.autoSaveDelay": 5000,
+    "files.autoSaveDelay": 0,
     "python.analysis.extraPaths": [
         "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_stubs\\60b6b51d0a97c143a757462360cd80a149d77747"
     ],

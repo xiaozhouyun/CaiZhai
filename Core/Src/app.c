@@ -1,4 +1,5 @@
 #include "app.h"
+#include "tiancan.h"
 #include "navigation.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -85,8 +86,10 @@ bool App_IsRunning(void)
  * @brief 接收串口命令，用于启动或停止导航任务
  * @param data 接收到的字符。'a'/'A' 代表启动航线 A，'t'/'T' 代表立即紧急停机
  */
-void App_CommandUartRxByte(uint8_t data)
+void vofaRxbyte(uint8_t data)
 {
+    Tiancan_RxByte(data);
+
     if (data == 'a' || data == 'A') {
         s_app_running = true;
         s_stop_requested = false;
@@ -345,4 +348,3 @@ int32_t App_RouteC_PlanAndRun(uint8_t start_node_idx, const uint8_t *target_node
 
     return 0;
 }
-

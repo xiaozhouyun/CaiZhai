@@ -39,6 +39,8 @@
 #include "pca9685.h"
 #include "app.h"
 #include "UpperCP.h"
+#include "vofa.h"
+#include "tiancan.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -223,7 +225,8 @@ void StartTask02(void *argument)
   /* Infinite loop */
     
   for(;;)
-  { char uart_buf[64];
+  {
+    float vofa_values[5];
 
     OLED_ShowString(40, 0, "        ", 16);
     OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
@@ -234,13 +237,14 @@ void StartTask02(void *argument)
     OLED_ShowString(24, 6, "        ", 16);
     OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
 
-    /* UART6  ‰≥ˆŒª÷√–≈œ¢ */
-    int len = snprintf(uart_buf, sizeof(uart_buf),
-                       "X:%.2f Y:%.2f Yaw:%.2f S:%d K:%s \r\n",
-                       g_robot_pos.x/10, g_robot_pos.y/10, g_robot_pos.yaw,
-                       navigation_state, UpperCP_GetLastCommand());                     
-    HAL_UART_Transmit(&huart6, (uint8_t *)uart_buf, len, 100);
- osDelay(100);
+    vofa_values[0] = g_robot_pos.x / 10.0f;
+    vofa_values[1] = g_robot_pos.y / 10.0f;
+    vofa_values[2] = g_robot_pos.yaw;
+    vofa_values[3] = TofData / 10.0f;
+    vofa_values[4] = (float)navigation_state;
+    Vofa_SendFloat(vofa_values, 5U);
+    Tiancan_Process();
+    osDelay(100);
  
   }
   /* USER CODE END StartTask02 */
@@ -279,15 +283,12 @@ void StartTask04(void *argument)
   /* USER CODE BEGIN StartTask04 */
   /* Infinite loop */
   App_Init();
-//    PCA9685_Set180Angle(1U,80.0f);
-    PCA9685_Set270Angle(0.0f);
-        osDelay(1000);
-      PCA9685_Set270Angle(-80.0f);
-    osDelay(1000);
-    PCA9685_Set270Angle(-100.0f);
+            osDelay(1000);
+    PCA9685_Set180Angle(1U,40.0f);
+
   for(;;)
   {
-        // UpperCP_RX();
+        UpperCP_RX();
         /* App chain: read current app mode and execute one scheduling step. */
         App_RunCurrentMode();
     osDelay(100);
@@ -353,6 +354,16 @@ void StartTask07(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+
+/**
+  * @brief  FreeRTOS Tick Hook ‚Äî called from tick ISR context.
+  *         Toggle PB2 for oscilloscope heartbeat monitoring.
+  *         Must be fast and must NOT call blocking FreeRTOS APIs.
+  */
+void vApplicationTickHook(void)
+{
+    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+}
 
 /* USER CODE END Application */
 

@@ -8,7 +8,7 @@
 #define PCA9685_PRESCALE         0xFEU
 #define PCA9685_LED0_ON_L        0x06U
 #define PCA9685_PRESCALE_50HZ    121U
-#define PCA9685_270_CENTER_DEG   10.0f
+#define PCA9685_270_CENTER_DEG   65.0f
 
 /* 全局静态数组：保存通道 1~4 舵机的当前角度（初始默认为 0.0 度） */
 static float s_pca9685_180_angles[5] = {0.0f};
@@ -85,7 +85,7 @@ int32_t PCA9685_Init(void)
     value = 0xA1U;
     return PCA9685_Write(PCA9685_MODE1, &value, 1U);
 }
-
+//-80到+80
 int32_t PCA9685_Set270Angle(float angle_deg)
 {
     return PCA9685_SetTicks(0U, PCA9685_PulseUsToTicks(
@@ -101,7 +101,7 @@ float PCA9685_Get180Angle(uint8_t channel)
 
     return s_pca9685_180_angles[channel];
 }
-
+//1U给到机械爪 -80到
 int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
 {
     if (channel < 1U || channel > 4U)

@@ -119,7 +119,6 @@ int main(void)
  {
    Error_Handler();
  }
-  // PCA9685_Set180Angle(1U, 0.0f);
   uint32_t hwt_wait_start;
   HWT101_HAL_Init();
   g_hwt101_data_ready = 0;
