@@ -6,7 +6,6 @@
 /.mxproject
 /.vscode/
 /Drivers/
-/MDK-ARM/
 /Middlewares/
 /debug.log
 /docs/
@@ -14,3 +13,18 @@
 /tests/
 /tools/
 /vet6_mdk.ioc
+
+# Keil MDK 编译产物 (compilation artifacts)
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.dep
+*.lst
+*.map
+*.iex
+*.htm
+*.lnp
+build.log
+*.uvguix.*
