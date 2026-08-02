@@ -61,6 +61,8 @@ struct move {
 extern volatile position_t g_robot_pos;         /**< 机器人当前位置（实时里程计累积） */
 extern Navigation_State_t navigation_state;     /**< 当前导航状态 */
 extern TiancanPid_t anglepid;                   /**< 旋转对齐角度 PID 全局变量（对应 Navigation_HandleTargetAlign 中的角度控制） */
+extern TiancanPid_t movepid;                    /**< 直线行进纠偏 PID 全局变量（对应 Navigation_HandleMoving 中的纠偏控制） */
+extern TiancanPid_t arrivedpid;                 /**< 终点角度调整 PID 全局变量（对应 Navigation_HandleArrived 中的角度微调控制） */
 extern struct move speed;                       /**< 速度控制结构体 */
 extern struct move angle_speed;                 /**< 角速度控制结构体 */
 extern float nav_yaw_zero_deg;                  /**< 零点偏差 */

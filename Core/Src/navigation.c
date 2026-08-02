@@ -34,14 +34,44 @@ TiancanPid_t anglepid = {
 #define MOVE_LINEAR_SPEED         400.0f        /**< 直线行进最大期望线速度 (mm/s) */
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
 static float move_kp = 1.5f;
+static float move_ki = 0.0f;
 static float move_kd = 0.1f;
+static float move_target = 0.0f;  /**< 直线行进航偏纠偏目标朝向 (rad) */
+
+/** 
+ * @brief 直线行进航偏纠偏 PID 全局变量（通道 2）
+ * 包含了 Navigation_HandleMoving 函数中使用的 PID 控制参数与目标值
+ */
+TiancanPid_t movepid = {
+    .name   = "movepid",
+    .kp     = &move_kp,
+    .ki     = &move_ki,
+    .kd     = &move_kd,
+    .target = &move_target
+};
+
 #define MOVE_ARRIVE_DIST          10.0f         /**< 目标点判定范围半径，小于 20mm 认为到达 (mm) */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 2.0f;
+static float arrived_ki = 0.0f;
 static float arrived_kd = 0.1f;
+static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
+
+/** 
+ * @brief 终点角度微调 PID 全局变量（通道 3）
+ * 包含了 Navigation_HandleArrived 函数中使用的 PID 控制参数与目标值
+ */
+TiancanPid_t arrivedpid = {
+    .name   = "arrivedpid",
+    .kp     = &arrived_kp,
+    .ki     = &arrived_ki,
+    .kd     = &arrived_kd,
+    .target = &arrived_target
+};
+
 #define ARRIVED_MAX_ANGULAR       1.5f          /**< 终点最大角速度限制 (rad/s) */
 #define ARRIVED_ERR_THRESH        0.02f         /**< 最终角度对齐允许最大误差 (rad) */
 
@@ -75,8 +105,10 @@ static void Navigation_RegisterTiancanPids(void)
     if (!registered) {
         /* 通道 1：注册旋转对齐角度 PID (anglepid，包含 target_yaw) */
         (void)Tiancan_RegisterPid(anglepid.name, anglepid.kp, anglepid.ki, anglepid.kd, anglepid.target);
-        (void)Tiancan_RegisterPid("move", &move_kp, NULL, &move_kd, NULL);
-        (void)Tiancan_RegisterPid("arrived", &arrived_kp, NULL, &arrived_kd, NULL);
+        /* 通道 2：注册直线行进纠偏 PID (movepid，包含 move_target) */
+        (void)Tiancan_RegisterPid(movepid.name, movepid.kp, movepid.ki, movepid.kd, movepid.target);
+        /* 通道 3：注册到达最终调整 PID (arrivedpid，包含 arrived_target) */
+        (void)Tiancan_RegisterPid(arrivedpid.name, arrivedpid.kp, arrivedpid.ki, arrivedpid.kd, arrivedpid.target);
         registered = true;
     }
 }
@@ -316,8 +348,8 @@ static void Navigation_HandleMoving(void)
 
     /* 纠偏误差：根据当前位置和目标点连线的方位角，对比当前机器人的朝向角度 */
     float heading_angle = atan2f(dx, dy);
-    float target_heading = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
-    err = Navigation_NormalizeRad(target_heading - g_robot_pos.yaw * NAV_PI / 180.0f);
+    *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
+    err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
 
     now = xTaskGetTickCount();
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
@@ -326,8 +358,8 @@ static void Navigation_HandleMoving(void)
         dt = 0.01f;
     }
 
-    /* PD计算纠偏输出的角速度 */
-    angular_speed = -(move_kp * err + move_kd * (err - last_err) / dt);
+    /* PD计算纠偏输出的角速度（使用 movepid 全局变量中的 PID 参数） */
+    angular_speed = -((*movepid.kp) * err + (*movepid.kd) * (err - last_err) / dt);
     if (angular_speed > MOVE_MAX_ANGULAR) {
         angular_speed = MOVE_MAX_ANGULAR;
     } else if (angular_speed < -MOVE_MAX_ANGULAR) {
@@ -376,7 +408,8 @@ static void Navigation_HandleArrived(void)
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
     static float last_err;
     static TickType_t last_time;
-    float err = Navigation_NormalizeRad(target.yaw - g_robot_pos.yaw * PI / 180.0f);
+    *arrivedpid.target = target.yaw * PI / 180.0f;
+    float err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * PI / 180.0f);
     float dt;
     float angular_speed;
     TickType_t now;
@@ -400,8 +433,8 @@ static void Navigation_HandleArrived(void)
         dt = 0.01f;
     }
     
-    /* PD计算旋转调整的角速度 */
-    angular_speed = -(arrived_kp * err + arrived_kd * (err - last_err) / dt);
+    /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
+    angular_speed = -((*arrivedpid.kp) * err + (*arrivedpid.kd) * (err - last_err) / dt);
     if (angular_speed > ARRIVED_MAX_ANGULAR) {
         angular_speed = ARRIVED_MAX_ANGULAR;
     } else if (angular_speed < -ARRIVED_MAX_ANGULAR) {
