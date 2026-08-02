@@ -1,9 +1,10 @@
 #include "UpperCP.h"
 #include "app.h"
+#include "arms.h"
 #include "navigation.h"
 #include "usart.h"
 #include "voice.h"
-
+#include "tof200f.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -92,6 +93,8 @@ uint8_t UpperCP_GetLastByte(void)
 static char *ret = NULL;
 uint8_t PosFlag = 1;
 float Rotate_Angle_Real = 0.0f;  /**< 云台实际当前角度 (单位：度) */
+float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
+uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
 
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
@@ -255,7 +258,7 @@ void Arm_func(void)
 		}
 		if(temp_num == 0)		//对准目标抓取
 		{
-			if(StateFlag == 0)	//抓地上
+			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
 				vTaskDelay(500);
@@ -271,22 +274,23 @@ void Arm_func(void)
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(800);
 				Arm_put();			//放置果子
-				App_NotifyGrabDone();
+				App_NotifyGrabDone();//释放任务四 继续下一个点
 			}
-			if(StateFlag == 1)	//抓树上
+			if(upordownFlag == 1)	//抓树上
 			{
 				App_NotifyGrabDone();
 			}
 		}else
-		if(temp_num == 5)	
+//视觉系统判断当前这个水果不值得抓（比如误识别、已被采摘、角度太偏无法抓取），就发 arm:5 指令让机械臂复位跳过，
 		{
-			if(StateFlag == 0)
+		if(temp_num == 5)
+			if(upordownFlag == 0)
 			{
 				vTaskDelay(200);
 				Move_Pos(22);
 				vTaskDelay(2000);
-				set_extend_cm(8);
-				float angle_dif1=(0-Rotate_Angle_Real)/100;
+                extend_cm(8);
+				angle_dif1 = (0.0f - Rotate_Angle_Real) / 100.0f;
 				for(int i=0; i<100; i++){
 					set_rotate_angle(Rotate_Angle_Real+angle_dif1);
 					vTaskDelay(fabs(angle_dif1)*18);
@@ -295,7 +299,7 @@ void Arm_func(void)
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}
-			if(StateFlag == 1)
+			if(upordownFlag == 1)
 			{
 				set_rotate_angle(0);
 //				vTaskDelay(500);
@@ -304,7 +308,7 @@ void Arm_func(void)
 		}else
 		if(temp_num == 6)	//移除坏果
 		{	
-			if(StateFlag == 0)	//抓地上
+			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
 				vTaskDelay(500);
@@ -326,7 +330,7 @@ void Arm_func(void)
 				vTaskDelay(500);
 				App_NotifyGrabDone();
 			}
-			if(StateFlag == 1)	//抓树上
+			if(upordownFlag == 1)	//抓树上
 			{
 				set_rotate_angle(0);
 				App_NotifyGrabDone();

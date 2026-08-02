@@ -104,10 +104,10 @@ float PCA9685_Get180Angle(uint8_t channel)
 
 int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
 {
-    if (channel < 1U || channel > 4U)
-    {
-        return -1;
-    }
+    // if (channel < 1U || channel > 4U)
+    // {
+    //     return -1;
+    // }
 
     /* 记录并更新当前通道的角度状态 */
     s_pca9685_180_angles[channel] = angle_deg;
@@ -115,15 +115,16 @@ int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
     return PCA9685_SetTicks(channel, PCA9685_PulseUsToTicks(
         PCA9685_AngleToPulseUs(angle_deg, 90.0f)));
 }
-//1U给到伸缩 -80到+40
-//2U给到机械抓 -30张开10度闭合
-//3u给到云台 -90到正90
+//1U给到云台   -90到正90
+//2U给到
+//3U伸缩 -80到+40
+//4U给到机械抓 -30张开10度闭合
 int32_t PCA9685_Set180AngleSmooth(uint8_t channel, float target_angle_deg, uint16_t steps, uint32_t step_delay_ms)
 {
-    if (channel < 1U || channel > 4U || steps == 0U)
-    {
-        return -1;
-    }
+    // if (channel < 1U || channel > 4U || steps == 0U)
+    // {
+    //     return -1;
+    // }
 
     /* 1. 读取当前角度，计算目标偏差 err */
     float current_angle = s_pca9685_180_angles[channel];

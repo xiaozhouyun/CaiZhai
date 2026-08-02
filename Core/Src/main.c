@@ -33,6 +33,7 @@
 #include "oled.h"
 #include "bujin.h"
 #include "odometer.h"
+#include "UpperCP.h"
 #include "tof200f.h"
 #include "navigation.h"
 #include "voice.h"
@@ -122,7 +123,7 @@ int main(void)
    Error_Handler();
  }
   uint32_t hwt_wait_start;
-  HWT101_HAL_Init();
+  // HWT101_HAL_Init();
   g_hwt101_data_ready = 0;
   hwt_wait_start = HAL_GetTick();
   while (g_hwt101_data_ready == 0 && (HAL_GetTick() - hwt_wait_start) < 1000)
@@ -131,8 +132,10 @@ int main(void)
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
   Rotate_Angle_Real = 0.0f;
-   PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
-  TOF200F_Init();
+  upordownFlag = 0; /* 初始化上下抓取标志位为 0 (默认 0:抓地上，1:抓树上) */
+  delay_ms(1000);
+  //  PCA9685_Set180AngleSmooth(1U, Rotate_Angle_Real, 100U, 10U);
+  // TOF200F_Init();
 //  OLED_Init();
   /* USER CODE END 2 */
 

@@ -3,7 +3,7 @@
 
 #include "main.h"
 
-/* 旧工程变量名：TOF200F 原始距离值；旧工程用 TofData / 10.0 得到 cm。 */
+/** TOF200F 激光测距传感器原始测量距离值 (毫米 mm，除以 10.0 转换为厘米 cm) */
 extern volatile float TofData;
 
 void TOF200F_Init(void);
