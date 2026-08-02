@@ -284,7 +284,7 @@ void StartTask04(void *argument)
   /* Infinite loop */
   App_Init();
             osDelay(1000);
-    PCA9685_Set180Angle(1U,40.0f);
+    PCA9685_Set180Angle(1U,-80.0f);
 
   for(;;)
   {

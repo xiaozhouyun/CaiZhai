@@ -101,7 +101,8 @@ float PCA9685_Get180Angle(uint8_t channel)
 
     return s_pca9685_180_angles[channel];
 }
-//1U给到机械爪 -80到
+//1U给到伸缩 -80到+40
+//2U给到机械抓 -30张开10度闭合
 int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
 {
     if (channel < 1U || channel > 4U)

@@ -129,7 +129,7 @@ int main(void)
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
   // TOF200F_Init();
-  OLED_Init();
+//  OLED_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */
