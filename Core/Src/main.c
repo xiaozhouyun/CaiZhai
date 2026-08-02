@@ -60,6 +60,7 @@
 
 /* USER CODE BEGIN PV */
     float roll, pitch, yaw;
+    volatile uint8_t g_system_error = 0;  /* 异常标志：Tick Hook + 故障 Handler 共用 */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,7 +132,7 @@ int main(void)
   Odometer_Init();
   Rotate_Angle_Real = 0.0f;
    PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
-  // TOF200F_Init();
+  TOF200F_Init();
 //  OLED_Init();
   /* USER CODE END 2 */
 

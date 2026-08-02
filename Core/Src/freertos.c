@@ -132,6 +132,12 @@ void StartTask07(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
+/* Hook prototypes */
+void vApplicationTickHook(void);
+
+/* USER CODE BEGIN 3 */
+/* USER CODE END 3 */
+
 /**
   * @brief  FreeRTOS initialization
   * @param  None
@@ -356,13 +362,29 @@ void StartTask07(void *argument)
 /* USER CODE BEGIN Application */
 
 /**
-  * @brief  FreeRTOS Tick Hook �?? called from tick ISR context.
-  *         Toggle PB2 for oscilloscope heartbeat monitoring.
-  *         Must be fast and must NOT call blocking FreeRTOS APIs.
+  * @brief  FreeRTOS Tick Hook — 双层 LED 心跳
+  *         - g_system_error == 0: 500Hz 翻转（示波器可见，人眼常亮）
+  *         - g_system_error != 0: 2Hz 翻转（人眼可见闪烁 ≈ 每 250ms 切换一次）
+  * @note   必须在 tick ISR 中快速返回，禁止调用阻塞 API
   */
 void vApplicationTickHook(void)
 {
-    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+    static uint32_t tick_count = 0;
+    tick_count++;
+
+    if (g_system_error != 0U)
+    {
+        /* 异常模式：每 250ms 翻转 → 2Hz 人眼可见闪烁 */
+        if ((tick_count % 250U) == 0U)
+        {
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+        }
+    }
+    else
+    {
+        /* 正常模式：每 1ms 翻转 → 500Hz 示波器用 */
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+    }
 }
 
 /* USER CODE END Application */

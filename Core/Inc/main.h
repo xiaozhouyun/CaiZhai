@@ -75,6 +75,9 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/** 系统全局异常标志：0=正常，非0=异常。Tick Hook 检测到此标志后切换为 2Hz 可见闪烁 */
+extern volatile uint8_t g_system_error;
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
