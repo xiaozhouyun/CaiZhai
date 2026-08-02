@@ -1,4 +1,5 @@
 #include "UpperCP.h"
+#include "app.h"
 #include "navigation.h"
 #include "usart.h"
 #include "voice.h"
@@ -90,6 +91,7 @@ uint8_t UpperCP_GetLastByte(void)
 
 static char *ret = NULL;
 uint8_t PosFlag = 1;
+float Rotate_Angle_Real = 0.0f;  /**< 云台实际当前角度 (单位：度) */
 uint8_t CameraFlag = 0;
 
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
@@ -132,13 +134,13 @@ void UpperCP_RX(void)
         strncpy(uppercp_last_cmd, ret, sizeof(uppercp_last_cmd) - 1U);
         uppercp_last_cmd[sizeof(uppercp_last_cmd) - 1U] = '\0';
         cmd_func();
-        speed_func();
-        angle_func();
-        face_func();
+        Arm_func();//爪子对其
         voice_func();
-        Arm_func();
-        ErWeiMa_func();
-        Move_func();
+        ErWeiMa_func();//二维码
+        Move_func();//位移
+        // angle_func();
+        // face_func();
+          // speed_func();
         ret = NULL;
     }
 }
@@ -233,8 +235,103 @@ void Arm_func(void)
         for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
             sscanf(p_num, "%d", &temp_num);
         }
-
-        (void)temp_num;
+        	if(temp_num == 1)		//目标偏右
+		{
+		    PCA9685_Set180Angle(3U,Rotate_Angle_Real+1);
+//			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
+		}else
+		if(temp_num == 2)		//目标偏左
+		{
+			PCA9685_Set180Angle(3U,Rotate_Angle_Real-1);
+//			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
+		}else
+		if(temp_num == 3)		//目标偏上
+		{
+			Move_up(1);
+		}else
+		if(temp_num == 4)		//目标偏下
+		{
+			Move_down(1);
+		}
+		if(temp_num == 0)		//对准目标抓取
+		{
+			if(StateFlag == 0)	//抓地上
+			{
+				get_dis();
+				vTaskDelay(500);
+				//计算长度
+				float dis_diff_temp = (TofData/10.0-1)/100.0;
+				
+				uint8_t i=100;
+				while(i--){
+					extend_cm(dis_diff_temp);//机械臂前移
+					vTaskDelay(15);
+				}
+	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
+				ZhuaZi_close();		//爪子夹住
+				vTaskDelay(800);
+				Arm_put();			//放置果子
+				App_NotifyGrabDone();
+			}
+			if(StateFlag == 1)	//抓树上
+			{
+				App_NotifyGrabDone();
+			}
+		}else
+		if(temp_num == 5)	
+		{
+			if(StateFlag == 0)
+			{
+				vTaskDelay(200);
+				Move_Pos(22);
+				vTaskDelay(2000);
+				set_extend_cm(8);
+				float angle_dif1=(0-Rotate_Angle_Real)/100;
+				for(int i=0; i<100; i++){
+					set_rotate_angle(Rotate_Angle_Real+angle_dif1);
+					vTaskDelay(fabs(angle_dif1)*18);
+				}
+				set_rotate_angle(0);
+//				vTaskDelay(500);
+			App_NotifyGrabDone();
+			}
+			if(StateFlag == 1)
+			{
+				set_rotate_angle(0);
+//				vTaskDelay(500);
+			App_NotifyGrabDone();
+			}
+		}else
+		if(temp_num == 6)	//移除坏果
+		{	
+			if(StateFlag == 0)	//抓地上
+			{
+				get_dis();
+				vTaskDelay(500);
+				//计算长度
+				float dis_diff_temp = (TofData/10.0-2)/100.0;
+				
+				uint8_t i=100;
+				while(i--){
+					extend_cm(dis_diff_temp);//机械臂前移
+					vTaskDelay(15);
+				}
+				ZhuaZi_close();		//爪子夹住
+				vTaskDelay(800);
+				ArmState==0 ?  set_rotate_angle(Rotate_Angle_Real+30):set_rotate_angle(Rotate_Angle_Real-30);
+				vTaskDelay(800);
+				ZhuaZi_open();
+				vTaskDelay(800);
+				Arm_put();
+				vTaskDelay(500);
+				App_NotifyGrabDone();
+			}
+			if(StateFlag == 1)	//抓树上
+			{
+				set_rotate_angle(0);
+				App_NotifyGrabDone();
+			}
+		}
         *ret = 0;
     }
 }

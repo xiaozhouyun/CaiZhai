@@ -264,7 +264,6 @@ void StartTask03(void *argument)
   for(;;)
   {
      g_robot_pos.yaw = Get_zeroYaw();
-     Navigation_TaskTick();
      Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -284,13 +283,14 @@ void StartTask04(void *argument)
   /* Infinite loop */
   App_Init();
   osDelay(1000);
-    PCA9685_Set180Angle(1U,-80.0f);
+    // PCA9685_Set180Angle(1U,-80.0f);
 
   for(;;)
   {
-        UpperCP_RX();
+        
         /* App chain: read current app mode and execute one scheduling step. */
         App_RunCurrentMode();
+         Navigation_TaskTick();
     osDelay(100);
   }
   /* USER CODE END StartTask04 */
@@ -310,7 +310,7 @@ void StartTask05(void *argument)
 
   /* Infinite loop */
   for(;;)
-  {
+  {UpperCP_RX();
     osDelay(100);
   }
   /* USER CODE END StartTask05 */
@@ -356,7 +356,7 @@ void StartTask07(void *argument)
 /* USER CODE BEGIN Application */
 
 /**
-  * @brief  FreeRTOS Tick Hook ï¿½? called from tick ISR context.
+  * @brief  FreeRTOS Tick Hook ï¿?? called from tick ISR context.
   *         Toggle PB2 for oscilloscope heartbeat monitoring.
   *         Must be fast and must NOT call blocking FreeRTOS APIs.
   */

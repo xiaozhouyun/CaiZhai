@@ -51,6 +51,11 @@ void App_SetMode(AppMode_t mode);
 bool App_IsRunning(void);
 
 /**
+ * @brief 通知当前航线任务：上位机已完成一次抓取。
+ */
+void App_NotifyGrabDone(void);
+
+/**
  * @brief 串口指令接收处理函数，用于解析外部启动/停止指令
  * @param data 接收到的串口数据字节 ('a'/'A' 启动, 't'/'T' 停止)
  */

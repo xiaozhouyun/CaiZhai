@@ -9,6 +9,8 @@ extern uint8_t fruits_count;
 
 extern uint8_t CameraFlag;
 
+extern float Rotate_Angle_Real;  /**< 云台实际当前角度 (单位：度) */
+
 void UpperCP_RX(void);
 void UpperCP_UartRxByte(uint8_t data);
 void UpperCP_SendTask(const char *task);

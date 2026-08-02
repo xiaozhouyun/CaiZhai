@@ -1,4 +1,5 @@
 #include "app.h"
+#include "cmsis_os.h"
 #include "tiancan.h"
 #include "navigation.h"
 #include "FreeRTOS.h"
@@ -7,6 +8,7 @@
 #include "bujin.h"
 #include "voice.h"
 #include "pca9685.h"
+#include "UpperCP.h"
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -25,6 +27,9 @@ volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 static volatile bool s_app_running;
 static volatile bool s_stop_requested;
+static osThreadId_t s_caizhai_tast_id;
+
+#define APP_EVENT_GRAB_DONE    (1U << 0)
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
@@ -192,8 +197,18 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
 
         /* 2. 到达目标点且底盘停稳后，只有当该航点配置了 has_action == true 时才执行舵机动作 */
         if (App_IsRunning() && route[i].has_action) {
-            PCA9685_Set180AngleSmooth(1U, 90.0f, 100U, 10U);
-            PCA9685_Set180AngleSmooth(1U, -90.0f, 100U, 10U);
+            Rotate_Angle_Real = 90.0f;
+            PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
+            s_caizhai_tast_id = osThreadGetId();
+            (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
+            UpperCP_SendTask("send");
+            (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
+
+            Rotate_Angle_Real = -90.0f;
+            PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
+            (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
+            UpperCP_SendTask("send");
+            (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
         }
     }
 
@@ -210,6 +225,13 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
 
     /* 切换到下一个运行模式 */
     App_SetMode(next_mode);
+}
+
+void App_NotifyGrabDone(void)
+{
+    if (s_caizhai_tast_id != NULL) {
+        (void)osThreadFlagsSet(s_caizhai_tast_id, APP_EVENT_GRAB_DONE);
+    }
 }
 
 /**

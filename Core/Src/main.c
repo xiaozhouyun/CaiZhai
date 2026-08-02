@@ -39,6 +39,7 @@
 #include "overroll.h"
 #include "pca9685.h"
 #include "app.h"
+#include "UpperCP.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -128,6 +129,8 @@ int main(void)
   }
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
+  Rotate_Angle_Real = 0.0f;
+   PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
   // TOF200F_Init();
 //  OLED_Init();
   /* USER CODE END 2 */
