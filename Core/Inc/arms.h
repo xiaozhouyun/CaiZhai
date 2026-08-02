@@ -51,4 +51,10 @@ void ZhuaZi_open(void);
  */
 void Arm_put(void);
 
+/**
+ * @brief  机械臂旋转角度控制（云台旋转）
+ * @param  angle_deg 目标角度，单位：度
+ */
+void Arm_SetRotateAngle(float angle_deg);
+
 #endif /* __ARMS_H */

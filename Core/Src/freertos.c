@@ -209,6 +209,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+     Navigation_Stop();
 
   /* Infinite loop */
   for(;;)
@@ -229,9 +230,10 @@ void StartTask02(void *argument)
 {
   /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
-    
+         osDelay(1000);
   for(;;)
   {
+
     float vofa_values[5];
 
     OLED_ShowString(40, 0, "        ", 16);
@@ -264,8 +266,9 @@ void StartTask02(void *argument)
 */
 /* USER CODE END Header_StartTask03 */
 void StartTask03(void *argument)
-{
+{ 
   /* USER CODE BEGIN StartTask03 */
+       osDelay(1000);
   /* Infinite loop */
   for(;;)
   {
@@ -286,9 +289,13 @@ void StartTask03(void *argument)
 void StartTask04(void *argument)
 {
   /* USER CODE BEGIN StartTask04 */
+       osDelay(1000);
+       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+  
   /* Infinite loop */
   App_Init();
-  osDelay(1000);
+  /* 调度器已运行：在任务上下文下发送一次底盘停止帧。 */
+
     // PCA9685_Set180Angle(1U,-80.0f);
 
   for(;;)
@@ -313,10 +320,12 @@ void StartTask05(void *argument)
 {
   /* USER CODE BEGIN StartTask05 */
   // PCA9685_Set180Angle(1U, 0.0f);
+       osDelay(1000);
 
   /* Infinite loop */
   for(;;)
-  {UpperCP_RX();
+  {
+    UpperCP_RX();
     osDelay(100);
   }
   /* USER CODE END StartTask05 */
@@ -379,11 +388,6 @@ void vApplicationTickHook(void)
         {
             HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
         }
-    }
-    else
-    {
-        /* 正常模式：每 1ms 翻转 → 500Hz 示波器用 */
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
     }
 }
 

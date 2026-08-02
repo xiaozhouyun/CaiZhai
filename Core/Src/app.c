@@ -110,16 +110,6 @@ void vofaRxbyte(uint8_t data)
         App_SetMode(APP_MODE_TEST);
     }
 }
-static long PC_Comm_FloatToCenti(float value)
-{
-    if (value >= 0.0f) {
-        return (long)(value * 100.0f + 0.5f);
-    }
-
-    return (long)(value * 100.0f - 0.5f);
-}
-
-
 /**
  * @brief 应用主循环/任务中调用的模式执行函数
  *        根据当前所处的 g_app_mode 决定执行哪条航线，或处理停止请求
@@ -136,12 +126,16 @@ void App_RunCurrentMode(void)
      switch (g_app_mode) {
         case APP_MODE_TEST:
             /* Test mode: currently does nothing, but can be used for debugging or custom tests. */
-        //  Chassis_SetSpeed(100.0f, 0.0f);
-        Emm_V5_Pos_Control(0x01, 1, 100, 10, 1000.0f, 1, 1);
-        Emm_V5_Pos_Control(0x02, 1, 100, 10, 1000.0f, 1, 1);
-        Emm_V5_Pos_Control(0x03, 1, 100, 10, 1000.0f, 1, 1);
-        Emm_V5_Pos_Control(0x04, 1, 100, 10, 1000.0f, 1, 1);
-          Emm_V5_Synchronous_motion(0);
+//            osDelay(500U);
+//            PCA9685_Set180AngleSmooth(7U, 20.0f, 100U, 10U);
+//             osDelay(1000U);
+//         PCA9685_Set180AngleSmooth(7U, 0.0f, 100U, 10U);
+//         PCA9685_Set180AngleSmooth(1U, 20.0f, 500U, 10U);
+            PCA9685_Set180Angle(1U,-80.0f);
+
+             osDelay(1000U);
+            App_SetMode(APP_MODE_IDLE);
+
             break;
 
         case APP_MODE_IDLE:

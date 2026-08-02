@@ -2,6 +2,9 @@
 #include "pca9685.h"
 #include "bujin.h"
 #include "UpperCP.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include <math.h>
 
 #define L0 1.05f
 #define L1 7.2f	//6.2 越小越长
@@ -68,12 +71,12 @@ void extend_cm(float dist_cm)
     float angle_deg;
 
     /* 1. 距离(cm)转舵机角度(deg)转换预留位（待公式确定后在此填充转换逻辑） */
-    dist_cm = dist_cm/2.0;
+    dist_cm = dist_cm / 2.0f;
 	float theta1 = atanf(L0/dist_cm);
 	float long1 = sqrt(dist_cm*dist_cm + L0*L0);
 	float theta2 = acosf((L2*L2 + long1*long1 - L1*L1)/(2*L2*long1));
 	float theta = (theta1 + theta2)*2;
-	angle_deg = theta*180/3.1415926 ;
+	angle_deg = theta * 180.0f / 3.1415926f;
 
     /* 2. 角度限幅保护：严格限制在 [-80.0f, +40.0f] 范围内 */
     if (angle_deg > 40.0f)
@@ -108,13 +111,13 @@ void Arm_put(void)
     /* 机械臂放置果子控制逻辑实现预留 */
     //缩回抬升后旋转
 	Move_Pos(26);
-	vTaskDelay(200);
+	vTaskDelay(pdMS_TO_TICKS(200U));
 	PCA9685_Set180AngleSmooth(3U, -80, 100U, 10U);//回中
-	vTaskDelay(1000);
+	vTaskDelay(pdMS_TO_TICKS(1000U));
 	PCA9685_Set180AngleSmooth(1U, 0, 100U, 10U);//回中
 	//开爪
 	ZhuaZi_open();
-	vTaskDelay(800);
+	vTaskDelay(pdMS_TO_TICKS(800U));
 }
 
 /**
@@ -125,4 +128,13 @@ void ZhuaZi_open(void)
 {
     /* 爪子张开/释放控制逻辑实现预留 */
       PCA9685_Set180AngleSmooth(4U, -30, 100U, 10U);
+}
+
+/**
+  * @brief  机械臂旋转角度控制（云台旋转舵机，通道3）
+  * @param  angle_deg 目标角度，单位：度
+  */
+void Arm_SetRotateAngle(float angle_deg)
+{
+    PCA9685_Set180AngleSmooth(3U, angle_deg, 100U, 10U);
 }

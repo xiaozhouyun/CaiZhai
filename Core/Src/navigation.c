@@ -138,8 +138,11 @@ void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg)
     g_robot_pos.yaw = 0.0f;
     nav_yaw_zero_deg = yaw_zero_deg;
     navigation_state = NAVIGATION_STATE_IDLE;
-    /* 重启/复位初始化时，主动下发一次速度 0，强制底盘电机静止，防止重启后电机自转 */
-    Chassis_SetSpeed(0.0f, 0.0f);
+    /*
+     * 此处仍处于 main() 的调度器启动前阶段，只初始化导航状态。
+     * 电机停止帧由 StartTask04() 在 FreeRTOS 运行后调用 Navigation_Stop() 下发，
+     * 避免在启动阶段进入包含 osDelay() 的 USART2 电机通信链。
+     */
 }
 
 /**

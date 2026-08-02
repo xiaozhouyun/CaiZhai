@@ -450,6 +450,11 @@
               <FilePath>../Core/Src/pca9685.c</FilePath>
             </File>
             <File>
+              <FileName>arms.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/arms.c</FilePath>
+            </File>
+            <File>
               <FileName>app.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Core\Src\app.c</FilePath>

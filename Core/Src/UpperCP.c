@@ -2,9 +2,13 @@
 #include "app.h"
 #include "arms.h"
 #include "navigation.h"
+#include "pca9685.h"
 #include "usart.h"
 #include "voice.h"
 #include "tof200f.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -261,18 +265,18 @@ void Arm_func(void)
 			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
-				vTaskDelay(500);
+				vTaskDelay(pdMS_TO_TICKS(500U));
 				//计算长度
-				float dis_diff_temp = (TofData/10.0-1)/100.0;
+				float dis_diff_temp = (TofData / 10.0f - 1.0f) / 100.0f;
 				
 				uint8_t i=100;
 				while(i--){
 					extend_cm(dis_diff_temp);//机械臂前移
-					vTaskDelay(15);
+					vTaskDelay(pdMS_TO_TICKS(15U));
 				}
 	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
 				ZhuaZi_close();		//爪子夹住
-				vTaskDelay(800);
+				vTaskDelay(pdMS_TO_TICKS(800U));
 				Arm_put();			//放置果子
 				App_NotifyGrabDone();//释放任务四 继续下一个点
 			}
@@ -280,59 +284,58 @@ void Arm_func(void)
 			{
 				App_NotifyGrabDone();
 			}
-		}else
+		} else if (temp_num == 5) //视觉系统判断当前水果不值得抓，机械臂复位并跳过
 //视觉系统判断当前这个水果不值得抓（比如误识别、已被采摘、角度太偏无法抓取），就发 arm:5 指令让机械臂复位跳过，
 		{
-		if(temp_num == 5)
 			if(upordownFlag == 0)
 			{
-				vTaskDelay(200);
+				vTaskDelay(pdMS_TO_TICKS(200U));
 				Move_Pos(22);
-				vTaskDelay(2000);
+				vTaskDelay(pdMS_TO_TICKS(2000U));
                 extend_cm(8);
 				angle_dif1 = (0.0f - Rotate_Angle_Real) / 100.0f;
 				for(int i=0; i<100; i++){
-					set_rotate_angle(Rotate_Angle_Real+angle_dif1);
-					vTaskDelay(fabs(angle_dif1)*18);
+					Arm_SetRotateAngle(Rotate_Angle_Real + angle_dif1);
+					vTaskDelay(pdMS_TO_TICKS((uint32_t)(fabsf(angle_dif1) * 18.0f)));
 				}
-				set_rotate_angle(0);
+				// Arm_SetRotateAngle(0.0f);
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}
 			if(upordownFlag == 1)
 			{
-				set_rotate_angle(0);
+				// Arm_SetRotateAngle(0.0f);
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}
-		}else
-		if(temp_num == 6)	//移除坏果
+		} else if (temp_num == 6)	//移除坏果
 		{	
 			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
-				vTaskDelay(500);
+				vTaskDelay(pdMS_TO_TICKS(500U));
 				//计算长度
-				float dis_diff_temp = (TofData/10.0-2)/100.0;
+				float dis_diff_temp = (TofData / 10.0f - 2.0f) / 100.0f;
 				
 				uint8_t i=100;
 				while(i--){
 					extend_cm(dis_diff_temp);//机械臂前移
-					vTaskDelay(15);
+					vTaskDelay(pdMS_TO_TICKS(15U));
 				}
 				ZhuaZi_close();		//爪子夹住
-				vTaskDelay(800);
-				ArmState==0 ?  set_rotate_angle(Rotate_Angle_Real+30):set_rotate_angle(Rotate_Angle_Real-30);
-				vTaskDelay(800);
+				vTaskDelay(pdMS_TO_TICKS(800U));
+				// PosFlag == 0U ? Arm_SetRotateAngle(Rotate_Angle_Real + 30.0f) :
+				//                  Arm_SetRotateAngle(Rotate_Angle_Real - 30.0f);
+				vTaskDelay(pdMS_TO_TICKS(800U));
 				ZhuaZi_open();
-				vTaskDelay(800);
+				vTaskDelay(pdMS_TO_TICKS(800U));
 				Arm_put();
-				vTaskDelay(500);
+				vTaskDelay(pdMS_TO_TICKS(500U));
 				App_NotifyGrabDone();
 			}
 			if(upordownFlag == 1)	//抓树上
 			{
-				set_rotate_angle(0);
+				// Arm_SetRotateAngle(0.0f);
 				App_NotifyGrabDone();
 			}
 		}
