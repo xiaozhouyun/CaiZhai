@@ -41,6 +41,9 @@
 #include "pca9685.h"
 #include "app.h"
 #include "UpperCP.h"
+#include "vofa.h"
+#include "tiancan.h"
+#include "arms.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -134,9 +137,9 @@ int main(void)
 // Emm_V5_Trigger_Zero(5,0,0);
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
-  Rotate_Angle_Real = 0.0f;
+
   upordownFlag = 0; /* 初始化上下抓取标志位为 0 (默认 0:抓地上，1:抓树上) */
-  Move_up(10.0f); /* 初始化机械臂抬升 10cm，避免抓取时碰撞地面 */
+ 
     HAL_Delay(1000U);
 
   // TOF200F_Init();

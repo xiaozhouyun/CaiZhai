@@ -97,7 +97,6 @@ uint8_t UpperCP_GetLastByte(void)
 
 static char *ret = NULL;
 uint8_t PosFlag = 1;
-float Rotate_Angle_Real = 0.0f;  /**< 云台实际当前角度 (单位：度) */
 float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
 uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
@@ -292,12 +291,7 @@ void Arm_func(void)
 				Move_Pos(22);
 				vTaskDelay(pdMS_TO_TICKS(2000U));
                 extend_cm(8);
-				angle_dif1 = (0.0f - Rotate_Angle_Real) / 100.0f;
-				for(int i=0; i<100; i++){
-					Arm_SetRotateAngle(Rotate_Angle_Real + angle_dif1);
-					vTaskDelay(pdMS_TO_TICKS((uint32_t)(fabsf(angle_dif1) * 18.0f)));
-				}
-				// Arm_SetRotateAngle(0.0f);
+				Arm_SetRotateAngle(0.0f);
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}

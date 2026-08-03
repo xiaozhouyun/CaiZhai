@@ -1,4 +1,4 @@
-#include "arms.h"
+ove_down#include "arms.h"
 #include "pca9685.h"
 #include "bujin.h"
 #include "UpperCP.h"
@@ -12,7 +12,7 @@
 #define ARM_EXTEND_DEG_TO_RAD         (0.01745329252f)
 
 /* 从完全收缩位开始累计的舵机角度变化量，单位：度。 */
-static float s_extend_delta_deg = 0.0f;
+static float s_extend_delta_deg = -80.0f;
 
 /*
  * @brief  根据题图中的精确公式计算连杆长度
@@ -195,7 +195,7 @@ void extend_cm(float dist_cm)
 void ZhuaZi_close(void)
 {
     /* 爪子闭合/抓取控制逻辑实现预留 */
-       PCA9685_Set180AngleSmooth(4U, 10, 100U, 10U);
+       PCA9685_Set180AngleSmooth(5U, 10, 100U, 10U);
 }
 
 /**
@@ -224,7 +224,7 @@ void Arm_put(void)
 void ZhuaZi_open(void)
 {
     /* 爪子张开/释放控制逻辑实现预留 */
-      PCA9685_Set180AngleSmooth(4U, -30, 100U, 10U);
+      PCA9685_Set180AngleSmooth(5U, -30, 100U, 10U);
 }
 
 /**

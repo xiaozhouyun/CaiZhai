@@ -41,6 +41,7 @@
 #include "UpperCP.h"
 #include "vofa.h"
 #include "tiancan.h"
+#include "arms.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -209,8 +210,9 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+    osDelay(1000);
      Navigation_Stop();
-
+     Move_up(10.0f); /* 初始化机械臂抬升 10cm，避免抓取时碰撞地面 */
   /* Infinite loop */
   for(;;)
   {
