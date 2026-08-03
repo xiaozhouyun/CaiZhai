@@ -112,7 +112,7 @@ int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
     }
 
     /* 记录并更新当前通道的角度状态 */
-//    s_pca9685_180_angles[channel] = angle_deg;
+    s_pca9685_180_angles[channel] = angle_deg;
 
     return PCA9685_SetTicks(channel, PCA9685_PulseUsToTicks(
         PCA9685_AngleToPulseUs(angle_deg, 90.0f)));
@@ -153,8 +153,16 @@ int32_t PCA9685_ResetAllToZero(void)
     /* 通道 1~15：180° 舵机，逐个归零 */
     for (uint8_t i = 1U; i < PCA9685_CHANNEL_COUNT; i++)
     {
-        PCA9685_Set180Angle(i, 0.0f);
-        s_pca9685_180_angles[i] = 0.0f;
+        float zero_angle = 0.0f;
+
+        /* 通道 7：伸缩机构，零位 = -80°（完全收缩） */
+        if (i == 6U)
+        {
+            zero_angle = -80.0f;
+        }
+
+        PCA9685_Set180Angle(i, zero_angle);
+        s_pca9685_180_angles[i] = zero_angle;
     }
 
     return 0;
@@ -163,8 +171,8 @@ int32_t PCA9685_ResetAllToZero(void)
 /**
  * @brief  平滑驱动指定通道 180° 舵机旋转至目标角度（插值平滑插帧控制）
  * @param  channel          舵机通道号 (0 ~ 15)
- *                          - 1U: 云台舵机 (-90° 至 +90°)
- *                          - 3U: 伸缩机构舵机 (-80° 至 +40°)
+ *                          - 7U: 云台舵机 (-90° 至 +90°)
+ *                          - 6U: 伸缩机构舵机 (-80° 至 +40°)
  *                          - 4U: 机械爪夹紧舵机 (-30° 张开, 10° 闭合)
  * @param  target_angle_deg 目标角度（单位：度）
  * @param  steps            平滑细化步数（分割出的微小插值步骤总数，steps > 0）

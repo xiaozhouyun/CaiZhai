@@ -1,5 +1,6 @@
 #include "app.h"
 #include "cmsis_os.h"
+#include "arms.h"
 #include "tiancan.h"
 #include "navigation.h"
 #include "FreeRTOS.h"
@@ -131,10 +132,12 @@ void App_RunCurrentMode(void)
 //             osDelay(1000U);
 //         PCA9685_Set180AngleSmooth(7U, 0.0f, 100U, 10U);
 //         PCA9685_Set180AngleSmooth(1U, 20.0f, 500U, 10U);
-            PCA9685_Set180AngleSmooth(7U,0.0f, 100U, 10U);
+        //     PCA9685_Set180AngleSmooth(7U,0.0f, 100U, 10U);
 
-             osDelay(1000U);
-           PCA9685_Set180AngleSmooth(7U,20.0f, 100U, 10U);
+        //      osDelay(1000U);
+        //    PCA9685_Set180AngleSmooth(7U,20.0f, 100U, 10U);
+        extend_cm(8.0f);
+           osDelay(1000U);
         
             App_SetMode(APP_MODE_IDLE);
 

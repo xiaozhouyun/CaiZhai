@@ -266,14 +266,9 @@ void Arm_func(void)
 			{
 				get_dis();
 				vTaskDelay(pdMS_TO_TICKS(500U));
-				//计算长度
-				float dis_diff_temp = (TofData / 10.0f - 1.0f) / 100.0f;
-				
-				uint8_t i=100;
-				while(i--){
-					extend_cm(dis_diff_temp);//机械臂前移
-					vTaskDelay(pdMS_TO_TICKS(15U));
-				}
+				/* extend_cm 内部会拆成 100 步平滑执行。 */
+				float dis_diff_temp = TofData / 10.0f - 1.0f;
+				extend_cm(dis_diff_temp);//机械臂前移
 	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(pdMS_TO_TICKS(800U));
@@ -314,14 +309,9 @@ void Arm_func(void)
 			{
 				get_dis();
 				vTaskDelay(pdMS_TO_TICKS(500U));
-				//计算长度
-				float dis_diff_temp = (TofData / 10.0f - 2.0f) / 100.0f;
-				
-				uint8_t i=100;
-				while(i--){
-					extend_cm(dis_diff_temp);//机械臂前移
-					vTaskDelay(pdMS_TO_TICKS(15U));
-				}
+				/* extend_cm 内部会拆成 100 步平滑执行。 */
+				float dis_diff_temp = TofData / 10.0f - 2.0f;
+				extend_cm(dis_diff_temp);//机械臂前移
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(pdMS_TO_TICKS(800U));
 				// PosFlag == 0U ? Arm_SetRotateAngle(Rotate_Angle_Real + 30.0f) :
