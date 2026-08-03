@@ -1,4 +1,5 @@
 #include "UpperCP.h"
+#include "vofa.h"
 #include "app.h"
 #include "arms.h"
 #include "navigation.h"
@@ -135,6 +136,9 @@ void UpperCP_RX(void)
     if (command_ready == 0U) {
         return;
     }
+
+    /* 将上位机 UpperCP 接收到的原始命令数据通过 VOFA+ 打印输出 */
+    Vofa_PrintUpperCPData(uppercp_cmd_buf);
 
     ret = strtok(uppercp_cmd_buf, ":");
     if (ret != NULL) {

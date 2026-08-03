@@ -236,21 +236,21 @@ void StartTask02(void *argument)
 
     float vofa_values[5];
 
-    OLED_ShowString(40, 0, "        ", 16);
-    OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
-    OLED_ShowString(40, 2, "        ", 16);
-    OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
-    OLED_ShowString(24, 4, "        ", 16);
-    OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
-    OLED_ShowString(24, 6, "        ", 16);
-    OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+    // OLED_ShowString(40, 0, "        ", 16);
+    // OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
+    // OLED_ShowString(40, 2, "        ", 16);
+    // OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
+    // OLED_ShowString(24, 4, "        ", 16);
+    // OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
+    // OLED_ShowString(24, 6, "        ", 16);
+    // OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
 
     vofa_values[0] = g_robot_pos.x / 10.0f;
     vofa_values[1] = g_robot_pos.y / 10.0f;
     vofa_values[2] = g_robot_pos.yaw;
     vofa_values[3] = TofData / 10.0f;
     vofa_values[4] = (float)navigation_state;
-    Vofa_SendFloat(vofa_values, 5U);
+    Vofa_SendFirewater(vofa_values, 5U);
     Tiancan_Process();
     osDelay(100);
  
@@ -304,7 +304,7 @@ void StartTask04(void *argument)
         
         /* App chain: read current app mode and execute one scheduling step. */
         App_RunCurrentMode();
-         Navigation_TaskTick();
+      
     osDelay(100);
   }
   /* USER CODE END StartTask04 */
@@ -339,13 +339,14 @@ void StartTask05(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartTask06 */
+//运行导航任务，周期 100ms
 void StartTask06(void *argument)
 {
   /* USER CODE BEGIN StartTask06 */
   /* Infinite loop */
   for(;;)
-  {
-    osDelay(100);
+  {  Navigation_TaskTick();
+    osDelay(10);
   }
   /* USER CODE END StartTask06 */
 }
