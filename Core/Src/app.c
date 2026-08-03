@@ -136,9 +136,13 @@ void App_RunCurrentMode(void)
 
         //      osDelay(1000U);
         //    PCA9685_Set180AngleSmooth(7U,20.0f, 100U, 10U);
-        extend_cm(8.0f);
-           osDelay(1000U);
-        
+        // extend_cm(8.0f);
+//        Chassis_SetSpeed(500.0f, 0.0f);
+//            Move_down(5.0f);
+//          PCA9685_Set180AngleSmooth(7U, 80, 200U, 10U);
+          PCA9685_Set270AngleSmooth(0.0f, 100U, 20U);
+           osDelay(2000U);
+//            Chassis_SetSpeed(0.0f, 0.0f);
             App_SetMode(APP_MODE_IDLE);
 
             break;
@@ -196,15 +200,16 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
 
         /* 2. 到达目标点且底盘停稳后，只有当该航点配置了 has_action == true 时才执行舵机动作 */
         if (App_IsRunning() && route[i].has_action) {
-            Rotate_Angle_Real = 80.0f;
-            PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
+            PCA9685_Set180AngleSmooth(7U, 80, 200U, 10U);
+            Move_down(10.0f);
+            // PCA9685_Set270AngleSmooth(10,200U, 20U);
             s_caizhai_tast_id = osThreadGetId();
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
             (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
 
-            Rotate_Angle_Real = -80.0f;
-            PCA9685_Set180AngleSmooth(3U, Rotate_Angle_Real, 100U, 10U);
+          
+            PCA9685_Set180AngleSmooth(7U, -80, 200U, 10U);
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
             (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);

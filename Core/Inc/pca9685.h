@@ -7,7 +7,7 @@
 #define PCA9685_MAX_PULSE_US     2500U
 #define PCA9685_PERIOD_US        20000U
 #define PCA9685_CHANNEL_COUNT    16U
-
+extern float s_pca9685_180_angles[PCA9685_CHANNEL_COUNT];
 static inline uint16_t PCA9685_PulseUsToTicks(uint16_t pulse_us)
 {
     if (pulse_us < PCA9685_MIN_PULSE_US)
@@ -24,7 +24,28 @@ static inline uint16_t PCA9685_PulseUsToTicks(uint16_t pulse_us)
 }
 
 int32_t PCA9685_Init(void);
+
+/**
+ * @brief  获取 270° 舵机（通道 0）的当前记录角度
+ * @return 当前角度（度）
+ */
+float PCA9685_Get270Angle(void);
+
+/**
+ * @brief  直接设置 270° 舵机（通道 0）的目标角度（瞬间到位）
+ * @param  angle_deg: 目标角度 (软限位范围：-260.0f 至 +10.0f，以原 60° 位置为新 0° 零点)
+ * @return 0 成功，-1 失败
+ */
 int32_t PCA9685_Set270Angle(float angle_deg);
+
+/**
+ * @brief  平滑设置 270° 舵机（通道 0）的目标角度（分步平滑、非硬延迟）
+ * @param  target_angle_deg: 目标角度 (软限位范围：-260.0f 至 +10.0f)
+ * @param  steps: 拆分的细微步数（例如 100）
+ * @param  step_delay_ms: 每微步的时间间隔（单位 ms，RTOS 下自动休眠让出 CPU）
+ * @return 0 成功，-1 失败
+ */
+int32_t PCA9685_Set270AngleSmooth(float target_angle_deg, uint16_t steps, uint32_t step_delay_ms);
 /**
  * @brief  获取指定通道 180° 舵机的当前记录角度
  * @param  channel: PCA9685 通道 (0~15)

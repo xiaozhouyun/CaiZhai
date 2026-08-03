@@ -10,10 +10,13 @@
 #define PCA9685_ALL_LED_ON_L     0xFAU
 #define PCA9685_ALL_LED_OFF_L    0xFCU
 #define PCA9685_PRESCALE_50HZ    121U
-#define PCA9685_270_CENTER_DEG   65.0f
+#define PCA9685_270_CENTER_DEG   125.0f /* 零点平移：将原 60° 输入位置设为新 0° 零点 (65.0f + 60.0f) */
+#define PCA9685_270_MIN_DEG     -260.0f /* 270°舵机硬限位下限 (-135° - 125°) */
+#define PCA9685_270_MAX_DEG       10.0f /* 270°舵机硬限位上限 (+135° - 125°) */
 
 /* 保存 PCA9685 全部 0~15 通道的当前记录角度（初始均为 0.0 度）。 */
-static float s_pca9685_180_angles[PCA9685_CHANNEL_COUNT] = {0.0f};
+float s_pca9685_180_angles[PCA9685_CHANNEL_COUNT] = {0.0f};
+static float s_pca9685_270_angle = 0.0f;
 
 static int32_t PCA9685_Write(uint8_t reg, uint8_t *data, uint16_t len)
 {
@@ -87,9 +90,24 @@ int32_t PCA9685_Init(void)
     value = 0xA1U;
     return PCA9685_Write(PCA9685_MODE1, &value, 1U);
 }
-//-80到+80
+float PCA9685_Get270Angle(void)
+{
+    return s_pca9685_270_angle;
+}
+
+/* 270° 舵机角度控制 (软限位范围：-260.0° 至 +10.0°) */
 int32_t PCA9685_Set270Angle(float angle_deg)
 {
+    if (angle_deg < PCA9685_270_MIN_DEG)
+    {
+        angle_deg = PCA9685_270_MIN_DEG;
+    }
+    else if (angle_deg > PCA9685_270_MAX_DEG)
+    {
+        angle_deg = PCA9685_270_MAX_DEG;
+    }
+
+    s_pca9685_270_angle = angle_deg;
     return PCA9685_SetTicks(0U, PCA9685_PulseUsToTicks(
         PCA9685_AngleToPulseUs(angle_deg + PCA9685_270_CENTER_DEG, 135.0f)));
 }
@@ -173,7 +191,7 @@ int32_t PCA9685_ResetAllToZero(void)
  * @param  channel          舵机通道号 (0 ~ 15)
  *                          - 7U: 云台舵机 (-90° 至 +90°)
  *                          - 6U: 伸缩机构舵机 (-80° 至 +40°)
- *                          - 4U: 机械爪夹紧舵机 (-30° 张开, 10° 闭合)
+ *                          - 5U: 机械爪夹紧舵机 (-30° 张开, 10° 闭合)
  * @param  target_angle_deg 目标角度（单位：度）
  * @param  steps            平滑细化步数（分割出的微小插值步骤总数，steps > 0）
  * @param  step_delay_ms    每一步微小动作之间的延迟时间（单位：毫秒 ms）
@@ -216,4 +234,48 @@ int32_t PCA9685_Set180AngleSmooth(uint8_t channel, float target_angle_deg, uint1
 
     /* 4. 最终精确校准并刷新记录该通道的目标角度值 */
     return PCA9685_Set180Angle(channel, target_angle_deg);
+}
+
+/**
+ * @brief  平滑驱动 270° 舵机（通道 0）旋转至目标角度（插值平滑插帧控制）
+ * @param  target_angle_deg 目标角度（单位：度）
+ * @param  steps            平滑细化步数（分割出的微小插值步骤总数，steps > 0）
+ * @param  step_delay_ms    每一步微小动作之间的延迟时间（单位：毫秒 ms）
+ * @return int32_t 0 成功到达目标角度，-1 参数非法（steps 为 0）
+ */
+int32_t PCA9685_Set270AngleSmooth(float target_angle_deg, uint16_t steps, uint32_t step_delay_ms)
+{
+    if (steps == 0U)
+    {
+        return -1;
+    }
+
+    /* 1. 读取 270° 舵机当前记录的角度值，计算残差 */
+    float current_angle = s_pca9685_270_angle;
+    float err = target_angle_deg - current_angle;
+
+    /* 2. 计算平均分配到每一步的角度递增量 */
+    float step_angle = err / (float)steps;
+
+    /* 3. 分步循环离散平滑动作 */
+    for (uint16_t i = 0U; i < steps; i++)
+    {
+        current_angle += step_angle;
+        PCA9685_Set270Angle(current_angle);
+
+        if (step_delay_ms > 0U)
+        {
+            if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+            {
+                vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
+            }
+            else
+            {
+                HAL_Delay(step_delay_ms);
+            }
+        }
+    }
+
+    /* 4. 最终精确到位 */
+    return PCA9685_Set270Angle(target_angle_deg);
 }

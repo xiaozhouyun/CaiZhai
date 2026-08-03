@@ -68,7 +68,7 @@ float now_pos = 0.0f;
   */
 void Move_up(float Data_cm)
 {
-    Emm_V5_Pos_Control(5, 0, 200, 200, Data_cm * 10.0f, false, true);
+    Emm_V5_PosUP_Control(5, 0, 200, 200, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
     now_pos += Data_cm;
 }
@@ -80,7 +80,7 @@ void Move_up(float Data_cm)
   */
 void Move_down(float Data_cm)
 {
-    Emm_V5_Pos_Control(5, 1, 200, 200, Data_cm * 10.0f, false, true);
+    Emm_V5_PosUP_Control(5, 1, 200, 200, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
     now_pos -= Data_cm;
 }
@@ -206,9 +206,9 @@ void Arm_put(void)
 {
     /* 机械臂放置果子控制逻辑实现预留 */
     //缩回抬升后旋转
-	Move_Pos(26);
+	Move_up(10.0f);
 	vTaskDelay(pdMS_TO_TICKS(200U));
-	PCA9685_Set180AngleSmooth(3U, -80, 100U, 10U);//回中
+	PCA9685_Set180AngleSmooth(7U, 0, 100U, 10U);//回中
 	vTaskDelay(pdMS_TO_TICKS(1000U));
 	PCA9685_Set180AngleSmooth(6U, ARM_EXTEND_MIN_ANGLE_DEG, 100U, 10U);//缩回到最小点
 	s_extend_delta_deg = 0.0f;

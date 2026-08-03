@@ -124,12 +124,14 @@ int main(void)
  }
  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
   uint32_t hwt_wait_start;
-  // HWT101_HAL_Init();
+   HWT101_HAL_Init();
   g_hwt101_data_ready = 0;
-//  hwt_wait_start = HAL_GetTick();
-//  while (g_hwt101_data_ready == 0 && (HAL_GetTick() - hwt_wait_start) < 1000)
-//  {
-//  }
+  hwt_wait_start = HAL_GetTick();
+  while (g_hwt101_data_ready == 0 && (HAL_GetTick() - hwt_wait_start) < 1000)
+  {
+  }
+// Emm_V5_Set_Zero(5U,1);
+// Emm_V5_Trigger_Zero(5,0,0);
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
   Rotate_Angle_Real = 0.0f;

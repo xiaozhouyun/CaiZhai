@@ -244,12 +244,12 @@ void Arm_func(void)
         }
         	if(temp_num == 1)		//目标偏右
 		{
-		    PCA9685_Set180Angle(3U,Rotate_Angle_Real+1);
+		    PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]+1);
 //			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
 		}else
 		if(temp_num == 2)		//目标偏左
 		{
-			PCA9685_Set180Angle(3U,Rotate_Angle_Real-1);
+			PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]-1);
 //			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
 		}else
 		if(temp_num == 3)		//目标偏上
@@ -264,11 +264,11 @@ void Arm_func(void)
 		{
 			if(upordownFlag == 0)	//抓地上
 			{
-				get_dis();
+				// get_dis();
 				vTaskDelay(pdMS_TO_TICKS(500U));
 				/* extend_cm 内部会拆成 100 步平滑执行。 */
-				float dis_diff_temp = TofData / 10.0f - 1.0f;
-				extend_cm(dis_diff_temp);//机械臂前移
+				// float dis_diff_temp = TofData / 10.0f - 1.0f;
+				extend_cm(10);//机械臂前移
 	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(pdMS_TO_TICKS(800U));
