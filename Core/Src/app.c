@@ -207,7 +207,7 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
             // osDelay(500U);
             PCA9685_Set180AngleSmooth(7U, 90, 150U, 10U);
             osDelay(500U);
-            Move_down(5.0f);
+            Move_down(6.0f);
             osDelay(500U);
             s_caizhai_tast_id = osThreadGetId();
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);

@@ -159,7 +159,7 @@
           <Type>0</Type>
           <LineNumber>276</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134231420</Address>
+          <Address>134231264</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -168,7 +168,23 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\Core\Src\UpperCP.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\\../Core/Src/UpperCP.c\276</Expression>
+          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\276</Expression>
+        </Bp>
+        <Bp>
+          <Number>1</Number>
+          <Type>0</Type>
+          <LineNumber>291</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>134231392</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>1</BreakIfRCount>
+          <Filename>..\Core\Src\UpperCP.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\291</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>

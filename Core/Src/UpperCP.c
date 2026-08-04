@@ -145,14 +145,18 @@ void UpperCP_RX(void)
     if (ret != NULL) {
         strncpy(uppercp_last_cmd, ret, sizeof(uppercp_last_cmd) - 1U);
         uppercp_last_cmd[sizeof(uppercp_last_cmd) - 1U] = '\0';
-        cmd_func();
-        Arm_func();//爪子对其
-        voice_func();
-        ErWeiMa_func();//二维码
-        Move_func();//位移
-        // angle_func();
-        // face_func();
-          // speed_func();
+
+        /* 按首字符分发，只调用匹配的函数 */
+        switch (ret[0]) {
+            case 'a': Arm_func();   break;  /* arm:X */
+            case 'c': cmd_func();   break;  /* cmd:X */
+            case 'v': voice_func(); break;  /* voice:X */
+            case 'Q': ErWeiMa_func(); break; /* QR:X */
+            case 'm': Move_func();  break;  /* move:X */
+            default:
+                if ((uint8_t)ret[0] == 0xD2) { Move_func(); }  /* 移动(GBK) */
+                break;
+        }
         ret = NULL;
     }
 }
@@ -168,7 +172,6 @@ void cmd_func(void)
             Serial5_Printf("num = %f\r\n", temp_num);
         }
 
-        *ret = 0;
     }
 }
 
@@ -185,7 +188,6 @@ void speed_func(void)
         speed.tar = (float)temp_num;
         speed.diff = (speed.tar - speed.real) / 8.0f;
 
-        *ret = 0;
     }
 }
 
@@ -202,7 +204,6 @@ void angle_func(void)
         angle_speed.tar = (float)temp_num;
         angle_speed.diff = (angle_speed.tar - angle_speed.real) / 8.0f;
 
-        *ret = 0;
     }
 }
 
@@ -218,7 +219,6 @@ void face_func(void)
 
         TarAngle = (int)temp_num;
 
-        *ret = 0;
     }
 }
 
@@ -234,7 +234,6 @@ void voice_func(void)
 
         Voice_Num(temp_num);
 
-        *ret = 0;
     }
 }
 
@@ -247,30 +246,33 @@ void Arm_func(void)
         for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
             sscanf(p_num, "%d", &temp_num);
         }
+        /* 云台角度只读一次，temp_num 1/2 共用 */
+        float gimbal_angle = PCA9685_Get180Angle(7U);
+        
         if(temp_num == 1)       //目标偏右：整车向前移动 1cm (10.0mm)
         {
-            float gimbal_angle = PCA9685_Get180Angle(7U);
-            if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏右 = 车前进
-            {
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
-            }
-            else                        // 云台在左侧：方向反转，目标偏右 = 车后退
-            {
-                Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
-            }
+            // if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏右 = 车前进
+            // {
+            //     Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
+            // }
+            // else                        // 云台在左侧：方向反转，目标偏右 = 车后退
+            // {
+            //     Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
+            // }
+             PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]+1);
             osDelay(pdMS_TO_TICKS(500U));
         }else
         if(temp_num == 2)       //目标偏左：整车向后移动 1cm (10.0mm)
         {
-            float gimbal_angle = PCA9685_Get180Angle(7U);
-            if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏左 = 车后退
-            {
-                Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
-            }
-            else                        // 云台在左侧：方向反转，目标偏左 = 车前进
-            {
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
-            }
+            // if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏左 = 车后退
+            // {
+            //     Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
+            // }
+            // else                        // 云台在左侧：方向反转，目标偏左 = 车前进
+            // {
+            //     Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
+            // }
+            PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]-1);
             osDelay(pdMS_TO_TICKS(500U));
         }else
 		if(temp_num == 3)		//目标偏上
@@ -282,15 +284,14 @@ void Arm_func(void)
 		{
 			Move_down(1);
             osDelay(pdMS_TO_TICKS(500U));
-		}
+		}else
 		if(temp_num == 0)		//对准目标抓取
 		{   
             // Chassis_SetSpeed(0.0f, 0.0f);
-            vTaskDelay(pdMS_TO_TICKS(500U));
 			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
-				vTaskDelay(pdMS_TO_TICKS(500U));
+				vTaskDelay(pdMS_TO_TICKS(100U));
 				/* extend_cm 内部会拆成 100 步平滑执行。 */
 				float dis_diff_temp = TofData / 10.0f - 1.0f;
                 ZhuaZi_open();		//爪子张开
@@ -350,7 +351,6 @@ void Arm_func(void)
 				App_NotifyGrabDone();
 			}
 		}
-        *ret = 0;
     }
 }
 
@@ -371,7 +371,6 @@ void ErWeiMa_func(void)
         fruits_count = i;
         CameraFlag = 1U;
 
-        *ret = 0;
     }
 }
 
@@ -387,6 +386,5 @@ void Move_func(void)
         }
 
         TarPos = temp_num;
-        *ret = 0;
     }
 }
