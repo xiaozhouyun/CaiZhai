@@ -248,13 +248,29 @@ void Arm_func(void)
             sscanf(p_num, "%d", &temp_num);
         }
         if(temp_num == 1)       //目标偏右：整车向前移动 1cm (10.0mm)
-        {   
-            Emm_V5_Chassis_Pos_Control(1, 50, 50, 10.0f);
+        {
+            float gimbal_angle = PCA9685_Get180Angle(7U);
+            if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏右 = 车前进
+            {
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
+            }
+            else                        // 云台在左侧：方向反转，目标偏右 = 车后退
+            {
+                Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
+            }
             osDelay(pdMS_TO_TICKS(500U));
         }else
         if(temp_num == 2)       //目标偏左：整车向后移动 1cm (10.0mm)
-        {   
-            Emm_V5_Chassis_Pos_Control(0, 50, 50, 10.0f);
+        {
+            float gimbal_angle = PCA9685_Get180Angle(7U);
+            if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏左 = 车后退
+            {
+                Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
+            }
+            else                        // 云台在左侧：方向反转，目标偏左 = 车前进
+            {
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
+            }
             osDelay(pdMS_TO_TICKS(500U));
         }else
 		if(temp_num == 3)		//目标偏上
@@ -295,11 +311,10 @@ void Arm_func(void)
 		{
 			if(upordownFlag == 0)
 			{
-				vTaskDelay(pdMS_TO_TICKS(200U));
-				Move_up(8.0f);
-				vTaskDelay(pdMS_TO_TICKS(2000U));
                 Arm_ExtendZero();//伸缩归零
+                vTaskDelay(pdMS_TO_TICKS(1000U));
 				Arm_SetRotateAngle(0.0f);
+                	vTaskDelay(pdMS_TO_TICKS(200U));
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}

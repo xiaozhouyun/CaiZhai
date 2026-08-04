@@ -125,7 +125,7 @@ int main(void)
  {
    Error_Handler();
  }
-   Emm_V5_Trigger_Zero(5, ZERO_MODE_NEAR_ORIGIN_HOME, false);
+//   Emm_V5_Trigger_Zero(5, ZERO_MODE_NEAR_ORIGIN_HOME, false);
  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
   HAL_Delay(100U);
   uint32_t hwt_wait_start;
@@ -136,7 +136,8 @@ int main(void)
   {
   }
 // Emm_V5_Set_Zero(5U,1);
-
+// Emm_V5_Trigger_Zero(5, ZERO_MODE_NEAR_ORIGIN_HOME, false);
+    // HAL_Delay(100U);
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
 

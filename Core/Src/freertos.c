@@ -252,6 +252,13 @@ void StartTask02(void *argument)
     // vofa_values[3] = TofData / 10.0f;
     // vofa_values[4] = (float)navigation_state;
     // Vofa_SendFirewater(vofa_values, 5U);
+
+    /* 打印 5U 夹爪舵机当前角度到 VOFA (FireWater 协议) */
+    // {
+    //     float angle_5u = PCA9685_Get180Angle(6U);
+    //     Vofa_SendFirewater(&angle_5u, 1U);
+    // }
+
     Tiancan_Process();
     osDelay(100);
  

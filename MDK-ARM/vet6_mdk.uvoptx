@@ -157,9 +157,9 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>274</LineNumber>
+          <LineNumber>276</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134231578</Address>
+          <Address>134231420</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -168,7 +168,7 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\Core\Src\UpperCP.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\274</Expression>
+          <Expression>\\\../Core/Src/UpperCP.c\276</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
@@ -211,6 +211,11 @@
           <count>7</count>
           <WinNumber>1</WinNumber>
           <ItemText>TofData</ItemText>
+        </Ww>
+        <Ww>
+          <count>8</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>s_pca9685_180_angles[channel]</ItemText>
         </Ww>
       </WatchWindow1>
       <WatchWindow2>
