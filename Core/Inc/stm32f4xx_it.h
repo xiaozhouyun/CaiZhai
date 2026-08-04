@@ -55,6 +55,7 @@ void DebugMon_Handler(void);
 void EXTI0_IRQHandler(void);
 void EXTI2_IRQHandler(void);
 void DMA1_Stream0_IRQHandler(void);
+void DMA1_Stream6_IRQHandler(void);
 void EXTI9_5_IRQHandler(void);
 void USART1_IRQHandler(void);
 void USART2_IRQHandler(void);

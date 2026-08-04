@@ -63,59 +63,64 @@
 /* USER CODE BEGIN Variables */
 
 /* USER CODE END Variables */
-/* Definitions for defaultTask - 初始化与基础控制任务 */
+/* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal, /* 优先级: osPriorityNormal (正常优先级) */
+  .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for myTask02 - 天蚕传感器处理任务 */
+/* Definitions for myTask02 */
 osThreadId_t myTask02Handle;
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal4, /* 优先级: osPriorityBelowNormal4 (低于正常4) */
+  .priority = (osPriority_t) osPriorityBelowNormal4,
 };
-/* Definitions for myTask03 - 里程计与姿态更新任务 */
+/* Definitions for myTask03 */
 osThreadId_t myTask03Handle;
 const osThreadAttr_t myTask03_attributes = {
   .name = "myTask03",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal5, /* 优先级: osPriorityBelowNormal5 (低于正常5) */
+  .priority = (osPriority_t) osPriorityBelowNormal5,
 };
-/* Definitions for myTask04 - 主应用App逻辑调度任务 */
+/* Definitions for myTask04 */
 osThreadId_t myTask04Handle;
 const osThreadAttr_t myTask04_attributes = {
   .name = "myTask04",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal6, /* 优先级: osPriorityBelowNormal6 (低于正常6) */
+  .priority = (osPriority_t) osPriorityBelowNormal6,
 };
-/* Definitions for myTask05 - 上位机通信接收任务 */
+/* Definitions for myTask05 */
 osThreadId_t myTask05Handle;
 const osThreadAttr_t myTask05_attributes = {
   .name = "myTask05",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal7, /* 优先级: osPriorityBelowNormal7 (低于正常7) */
+  .priority = (osPriority_t) osPriorityBelowNormal7,
 };
-/* Definitions for myTask06 - 导航与路径跟踪TaskTick任务 */
+/* Definitions for myTask06 */
 osThreadId_t myTask06Handle;
 const osThreadAttr_t myTask06_attributes = {
   .name = "myTask06",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal, /* 优先级: osPriorityNormal (正常优先级) */
+  .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for myTask07 - 保留/后台高优先级任务 */
+/* Definitions for myTask07 */
 osThreadId_t myTask07Handle;
 const osThreadAttr_t myTask07_attributes = {
   .name = "myTask07",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal1, /* 优先级: osPriorityNormal1 (高于正常1) */
+  .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for usart2TX */
 osMutexId_t usart2TXHandle;
 const osMutexAttr_t usart2TX_attributes = {
   .name = "usart2TX"
+};
+/* Definitions for duojiI2c */
+osMutexId_t duojiI2cHandle;
+const osMutexAttr_t duojiI2c_attributes = {
+  .name = "duojiI2c"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -151,6 +156,9 @@ void MX_FREERTOS_Init(void) {
   /* Create the mutex(es) */
   /* creation of usart2TX */
   usart2TXHandle = osMutexNew(&usart2TX_attributes);
+
+  /* creation of duojiI2c */
+  duojiI2cHandle = osMutexNew(&duojiI2c_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -235,6 +243,8 @@ void StartDefaultTask(void *argument)
 /* USER CODE END Header_StartTask02 */
 void StartTask02(void *argument)
 {
+  uint32_t oled_last_refresh = 0U;
+
   /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
          osDelay(500);
@@ -243,14 +253,18 @@ void StartTask02(void *argument)
 
     // float vofa_values[5];
 
-    OLED_ShowString(40, 0, "        ", 16);
-    OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
-    OLED_ShowString(40, 2, "        ", 16);
-    OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
-    OLED_ShowString(24, 4, "        ", 16);
-    OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
-    OLED_ShowString(24, 6, "        ", 16);
-    OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+    if ((OLED_IsReady() != 0U) && ((HAL_GetTick() - oled_last_refresh) >= 500U))
+    {
+      oled_last_refresh = HAL_GetTick();
+      OLED_ShowString(40, 0, "        ", 16);
+      OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
+      OLED_ShowString(40, 2, "        ", 16);
+      OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
+      OLED_ShowString(24, 4, "        ", 16);
+      OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
+      OLED_ShowString(24, 6, "        ", 16);
+      OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+    }
 
     // vofa_values[0] = g_robot_pos.x / 10.0f;
     // vofa_values[1] = g_robot_pos.y / 10.0f;
@@ -346,7 +360,7 @@ void StartTask05(void *argument)
   for(;;)
   {
     UpperCP_RX();
-    osDelay(100);
+     vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask05 */
 }

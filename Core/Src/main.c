@@ -113,7 +113,6 @@ int main(void)
   MX_DMA_Init();
   MX_UART4_Init();
   MX_UART5_Init();
-  UpperCP_UartDmaStart();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
@@ -133,7 +132,10 @@ int main(void)
   HAL_Delay(100U);           /* 延时 100ms 确保舵机转动到初始零位 */
 
   /* ================= 2. 显示屏与传感器初始化 ================= */
-  OLED_Init();               /* 初始化 OLED 显示屏 */
+  if (OLED_Init() != OLED_OK)
+  {
+    g_system_error = 1U;
+  }
   TOF200F_Init();            /* 初始化 TOF200F 激光测距传感器 */
 
   /* ================= 3. 姿态传感器初始化 (HWT101) ================= */

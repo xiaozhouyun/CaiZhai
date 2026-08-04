@@ -1,7 +1,10 @@
 #include "pca9685.h"
 #include "i2c.h"
+#include "cmsis_os.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
+extern osMutexId_t duojiI2cHandle;
 
 #define PCA9685_ADDRESS          (0x40U << 1)
 #define PCA9685_MODE1            0x00U
@@ -10,6 +13,7 @@
 #define PCA9685_ALL_LED_ON_L     0xFAU
 #define PCA9685_ALL_LED_OFF_L    0xFCU
 #define PCA9685_PRESCALE_50HZ    121U
+#define PCA9685_I2C_TIMEOUT_MS   20U
 #define PCA9685_270_CENTER_DEG   125.0f /* 零点平移：将原 60° 输入位置设为新 0° 零点 (65.0f + 60.0f) */
 #define PCA9685_270_MIN_DEG     -260.0f /* 270°舵机硬限位下限 (-135° - 125°) */
 #define PCA9685_270_MAX_DEG       10.0f /* 270°舵机硬限位上限 (+135° - 125°) */
@@ -20,9 +24,31 @@ static float s_pca9685_270_angle = 0.0f;
 
 static int32_t PCA9685_Write(uint8_t reg, uint8_t *data, uint16_t len)
 {
-    if (HAL_I2C_Mem_Write(&hi2c2, PCA9685_ADDRESS, reg,
-                          I2C_MEMADD_SIZE_8BIT, data, len,
-                          HAL_MAX_DELAY) != HAL_OK)
+    osStatus_t mutex_status = osOK;
+    uint8_t use_mutex = 0U;
+    HAL_StatusTypeDef status;
+
+    if ((duojiI2cHandle != NULL) && (osKernelGetState() == osKernelRunning))
+    {
+        use_mutex = 1U;
+        mutex_status = osMutexAcquire(duojiI2cHandle, PCA9685_I2C_TIMEOUT_MS);
+    }
+
+    if (mutex_status != osOK)
+    {
+        return -1;
+    }
+
+    status = HAL_I2C_Mem_Write(&hi2c2, PCA9685_ADDRESS, reg,
+                               I2C_MEMADD_SIZE_8BIT, data, len,
+                               PCA9685_I2C_TIMEOUT_MS);
+
+    if (use_mutex != 0U)
+    {
+        (void)osMutexRelease(duojiI2cHandle);
+    }
+
+    if (status != HAL_OK)
     {
         return -1;
     }

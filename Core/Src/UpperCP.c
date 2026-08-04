@@ -27,6 +27,8 @@ static volatile uint32_t uppercp_rx_count;
 static volatile uint8_t uppercp_last_byte;
 static uint8_t uppercp_dma_rx_buf[UPPERCP_DMA_RX_BUF_LEN];
 static uint16_t uppercp_dma_rx_pos;
+static volatile uint32_t uppercp_rx_overflow_count;
+static volatile uint32_t uppercp_uart_error_count;
 static char uppercp_cmd_buf[UPPERCP_RX_BUF_LEN];
 static char uppercp_last_cmd[UPPERCP_RX_BUF_LEN];
 static uint16_t uppercp_cmd_len;
@@ -60,6 +62,7 @@ void UpperCP_UartRxByte(uint8_t data)
     uppercp_rx_count++;
 
     if (next_head == uppercp_rx_tail) {
+        uppercp_rx_overflow_count++;
         return;
     }
 
@@ -72,11 +75,10 @@ void UpperCP_UartDmaStart(void)
     uppercp_dma_rx_pos = 0U;
 
     if (HAL_UART_Receive_DMA(&huart5, uppercp_dma_rx_buf, UPPERCP_DMA_RX_BUF_LEN) != HAL_OK) {
-        Error_Handler();
+        uppercp_uart_error_count++;
+        return;
     }
 
-    __HAL_DMA_DISABLE_IT(huart5.hdmarx, DMA_IT_HT);
-    __HAL_DMA_DISABLE_IT(huart5.hdmarx, DMA_IT_TC);
     __HAL_UART_ENABLE_IT(&huart5, UART_IT_IDLE);
 }
 
@@ -96,6 +98,49 @@ void UpperCP_UartDmaRxProcess(void)
             uppercp_dma_rx_pos = 0U;
         }
     }
+}
+
+uint32_t UpperCP_GetRxOverflowCount(void)
+{
+    return uppercp_rx_overflow_count;
+}
+
+uint32_t UpperCP_GetUartErrorCount(void)
+{
+    return uppercp_uart_error_count;
+}
+
+static void UpperCP_UartDmaRestart(void)
+{
+    (void)HAL_UART_DMAStop(&huart5);
+    UpperCP_UartDmaStart();
+}
+
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart5)
+    {
+        UpperCP_UartDmaRxProcess();
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart5)
+    {
+        UpperCP_UartDmaRxProcess();
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart5)
+    {
+        uppercp_uart_error_count++;
+        UpperCP_UartDmaRestart();
+    }
+
+    Emm_UartErrorCallback(huart);
 }
 
 void UpperCP_SendTask(const char *task)

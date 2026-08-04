@@ -1,13 +1,16 @@
 #include "bujin.h"
 #include "cmsis_os.h"
+#include <string.h>
 
 extern UART_HandleTypeDef huart2;
 extern osMutexId_t usart2TXHandle;
 
+#define EMM_TX_QUEUE_SIZE         8U
+#define EMM_TX_FRAME_MAX_LEN      20U
 #define BUJIN_PI                  3.1415926f
 #define BUJIN_PULSE_PER_REV       3200.0f
 
-/* 位置模式的毫米换算半径，单位 mm；当前按升降机构旧参数 1.02cm 换成 10.2mm。 */
+
 #define BUJIN_WHEEL_RADIUS_MM     85.0f
 
 /* 升降机：每个脉冲对应直线位移 0.0288mm，实测值（原 0.36f 导致输入15cm仅移动12mm） */
@@ -20,26 +23,101 @@ extern osMutexId_t usart2TXHandle;
 /**
  * @brief  Emm V5 步进驱动器串口数据发送函数 (USART2)
  */
+static uint8_t s_emm_tx_queue[EMM_TX_QUEUE_SIZE][EMM_TX_FRAME_MAX_LEN];
+static uint16_t s_emm_tx_len[EMM_TX_QUEUE_SIZE];
+static volatile uint8_t s_emm_tx_head;
+static volatile uint8_t s_emm_tx_tail;
+static volatile uint8_t s_emm_tx_busy;
+static volatile uint32_t s_emm_tx_drop_count;
+
+static void Emm_StartNext(void)
+{
+    uint8_t tail;
+
+    if ((s_emm_tx_busy != 0U) || (s_emm_tx_tail == s_emm_tx_head))
+    {
+        return;
+    }
+
+    tail = s_emm_tx_tail;
+    s_emm_tx_busy = 1U;
+    if (HAL_UART_Transmit_DMA(&huart2, s_emm_tx_queue[tail], s_emm_tx_len[tail]) != HAL_OK)
+    {
+        s_emm_tx_busy = 0U;
+        s_emm_tx_tail = (uint8_t)((tail + 1U) % EMM_TX_QUEUE_SIZE);
+        s_emm_tx_drop_count++;
+    }
+}
+
 static void Emm_Send(const uint8_t *data, uint16_t len)
 {
     osStatus_t mutex_status = osOK;
-    uint8_t use_mutex = 0;
+    uint8_t next_head;
+
+    if ((data == NULL) || (len == 0U) || (len > EMM_TX_FRAME_MAX_LEN))
+    {
+        return;
+    }
 
     if ((usart2TXHandle != NULL) && (osKernelGetState() == osKernelRunning))
     {
-        use_mutex = 1;
-        mutex_status = osMutexAcquire(usart2TXHandle, osWaitForever);
+        mutex_status = osMutexAcquire(usart2TXHandle, 20U);
     }
 
-    if (mutex_status == osOK)
+    if (mutex_status != osOK)
     {
-        (void)HAL_UART_Transmit(&huart2, (uint8_t *)data, len, HAL_MAX_DELAY);
-
-        if (use_mutex != 0)
-        {
-            (void)osMutexRelease(usart2TXHandle);
-        }
+        s_emm_tx_drop_count++;
+        return;
     }
+
+    next_head = (uint8_t)((s_emm_tx_head + 1U) % EMM_TX_QUEUE_SIZE);
+    if (next_head == s_emm_tx_tail)
+    {
+        s_emm_tx_drop_count++;
+    }
+    else
+    {
+        memcpy(s_emm_tx_queue[s_emm_tx_head], data, len);
+        s_emm_tx_len[s_emm_tx_head] = len;
+        s_emm_tx_head = next_head;
+        Emm_StartNext();
+    }
+
+    if ((usart2TXHandle != NULL) && (osKernelGetState() == osKernelRunning))
+    {
+        (void)osMutexRelease(usart2TXHandle);
+    }
+}
+
+void Emm_UartTxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart != &huart2)
+    {
+        return;
+    }
+
+    s_emm_tx_tail = (uint8_t)((s_emm_tx_tail + 1U) % EMM_TX_QUEUE_SIZE);
+    s_emm_tx_busy = 0U;
+    Emm_StartNext();
+}
+
+void Emm_UartErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart2)
+    {
+        if ((s_emm_tx_busy != 0U) && (s_emm_tx_tail != s_emm_tx_head))
+        {
+            s_emm_tx_tail = (uint8_t)((s_emm_tx_tail + 1U) % EMM_TX_QUEUE_SIZE);
+        }
+        s_emm_tx_busy = 0U;
+        s_emm_tx_drop_count++;
+        Emm_StartNext();
+    }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    Emm_UartTxCpltCallback(huart);
 }
 
 /**
@@ -387,6 +465,3 @@ void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm
     Emm_V5_Pos_Control(4, dir, vel, acc, mm, false, true);
     Emm_V5_Synchronous_motion(0);
 }
-
-
-

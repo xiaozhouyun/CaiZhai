@@ -16,6 +16,8 @@ void UpperCP_RX(void);
 void UpperCP_UartRxByte(uint8_t data);
 void UpperCP_UartDmaStart(void);
 void UpperCP_UartDmaRxProcess(void);
+uint32_t UpperCP_GetRxOverflowCount(void);
+uint32_t UpperCP_GetUartErrorCount(void);
 void UpperCP_SendTask(const char *task);
 const char *UpperCP_GetLastCommand(void);
 uint32_t UpperCP_GetRxCount(void);

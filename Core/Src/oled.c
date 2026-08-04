@@ -2,6 +2,7 @@
 #include "oled_font.h"
 
 static uint8_t OLED_GRAM[128][8];
+static uint8_t oled_ready;
 
 #define OLED_I2C_DELAY_US 5U
 
@@ -406,6 +407,7 @@ uint8_t OLED_Init(void)
     };
     uint8_t i;
 
+    oled_ready = 0U;
     OLED_I2C_Init();
     HAL_Delay(1);
 
@@ -418,7 +420,13 @@ uint8_t OLED_Init(void)
     }
 
     OLED_Clear();
+    oled_ready = 1U;
     return OLED_OK;
+}
+
+uint8_t OLED_IsReady(void)
+{
+    return oled_ready;
 }
 
 void Boot_Animation(void)

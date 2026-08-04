@@ -61,6 +61,7 @@ static const AppWaypoint_t k_route_c[] = {
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
                          AppMode_t next_mode);
+static bool App_WaitGrabDone(void);
 
 /**
  * @brief 初始化应用层状态
@@ -215,7 +216,10 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
               osDelay(500U);
-            (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
+            if (!App_WaitGrabDone()) {
+                Navigation_Stop();
+                return;
+            }
            
             //回零
              Move_Pos(8.0f);
@@ -227,7 +231,10 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
               osDelay(500U);
-            (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
+            if (!App_WaitGrabDone()) {
+                Navigation_Stop();
+                return;
+            }
         }
     }
 
@@ -244,6 +251,20 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
 
     /* 切换到下一个运行模式 */
     App_SetMode(next_mode);
+}
+
+static bool App_WaitGrabDone(void)
+{
+    uint32_t flags;
+
+    while (App_IsRunning() && !s_stop_requested) {
+        flags = osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, 50U);
+        if ((flags & APP_EVENT_GRAB_DONE) != 0U) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void App_NotifyGrabDone(void)

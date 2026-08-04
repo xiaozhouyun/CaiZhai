@@ -13,6 +13,7 @@ void OLED_WR_Byte(uint8_t dat, uint8_t cmd);
 void OLED_Display_On(void);
 void OLED_Display_Off(void);
 uint8_t OLED_Init(void);
+uint8_t OLED_IsReady(void);
 void OLED_Clear(void);
 void OLED_DrawPoint(uint8_t x, uint8_t y, uint8_t t);
 void OLED_Fill(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t dot);
