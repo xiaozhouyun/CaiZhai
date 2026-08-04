@@ -59,4 +59,5 @@ void Emm_V5_Read_Zero_Params(uint8_t addr);
 void Emm_V5_Modify_Zero_Params(uint8_t addr, bool save, const Emm_V5_Zero_Params_t *params);
 void Emm_V5_Read_Zero_Status(uint8_t addr);
 void Emm_V5_PosUP_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, float mm, bool raF, bool snF);
+void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm);
 #endif

@@ -37,6 +37,11 @@ void Move_Pos(float Tar_pos);
 void extend_cm(float dist_cm);
 
 /**
+ * @brief  机械臂伸缩机构归零/复位到完全收缩位置 (-80°)
+ */
+void Arm_ExtendZero(void);
+
+/**
  * @brief  爪子闭合/抓取控制函数
  */
 void ZhuaZi_close(void);

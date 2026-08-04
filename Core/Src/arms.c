@@ -68,7 +68,7 @@ float now_pos = 0.0f;
   */
 void Move_up(float Data_cm)
 {
-    Emm_V5_PosUP_Control(5, 0, 200, 200, Data_cm * 10.0f, false, true);
+    Emm_V5_PosUP_Control(5, 0, 50, 50, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
     now_pos += Data_cm;
 }
@@ -79,7 +79,7 @@ void Move_up(float Data_cm)
   */
 void Move_down(float Data_cm)
 {
-    Emm_V5_PosUP_Control(5, 1, 200, 200, Data_cm * 10.0f, false, true);
+    Emm_V5_PosUP_Control(5, 1, 500, 50, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
     now_pos -= Data_cm;
 }
@@ -189,6 +189,15 @@ void extend_cm(float dist_cm)
 }
 
 /**
+  * @brief  机械臂伸缩机构归零/复位到完全收缩位置 (-80°)
+  * @note   驱动通道 6U 伸缩舵机平滑旋转至 ARM_EXTEND_MIN_ANGLE_DEG (-80.0f)
+  */
+void Arm_ExtendZero(void)
+{
+    (void)PCA9685_Set180AngleSmooth(6U, ARM_EXTEND_MIN_ANGLE_DEG, 100U, 15U);
+}
+
+/**
   * @brief  爪子闭合/抓取控制函数（通道 5U）
   * @note   驱动通道 5 夹爪舵机闭合 (+10°)
   */
@@ -198,30 +207,30 @@ void ZhuaZi_close(void)
 }
 
 /**
-  * @brief  机械臂放置果子控制函数
-  * @note   用于驱动机械臂与夹爪完成果子的松开与放置动作
-  */
-void Arm_put(void)
-{
-    /* 缩回抬升后旋转 */
-    Move_up(10.0f);
-    vTaskDelay(pdMS_TO_TICKS(200U));
-    PCA9685_Set180AngleSmooth(7U, 0, 100U, 10U); // 7U 云台回中
-    vTaskDelay(pdMS_TO_TICKS(1000U));
-    PCA9685_Set180AngleSmooth(6U, ARM_EXTEND_MIN_ANGLE_DEG, 100U, 10U); // 6U 伸缩缩回到最小点 (-80°)
-    vTaskDelay(pdMS_TO_TICKS(200U));
-    /* 开爪 */
-    ZhuaZi_open();
-    vTaskDelay(pdMS_TO_TICKS(800U));
-}
-
-/**
   * @brief  爪子打开/松开控制函数（通道 5U）
   * @note   驱动通道 5 夹爪舵机张开 (-30°)
   */
 void ZhuaZi_open(void)
 {
     (void)PCA9685_Set180AngleSmooth(5U, -30.0f, 100U, 10U);
+}
+
+/**
+  * @brief  机械臂放置果子控制函数
+  * @note   用于驱动机械臂与夹爪完成果子的松开与放置动作
+  */
+void Arm_put(void)
+{
+    /* 缩回抬升后旋转 */
+    Move_up(8.5f);
+    vTaskDelay(pdMS_TO_TICKS(100U));
+    PCA9685_Set180AngleSmooth(7U, 0, 100U, 10U); // 7U 云台回中
+    vTaskDelay(pdMS_TO_TICKS(1000U));
+    Arm_ExtendZero(); // 6U 伸缩机构归零/缩回到最小点 (-80°)
+    vTaskDelay(pdMS_TO_TICKS(200U));
+    /* 开爪 */
+    ZhuaZi_open();
+    vTaskDelay(pdMS_TO_TICKS(800U));
 }
 
 /**

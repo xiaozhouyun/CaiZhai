@@ -210,12 +210,11 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-    osDelay(1000);
+      osDelay(100);
      Navigation_Stop();
-     Move_up(10.0f); /* 初始化机械臂抬升 10cm，避免抓取时碰撞地面 */
   /* Infinite loop */
-  for(;;)
-  {
+  for(;;){
+      
     osDelay(100);
   }
   /* USER CODE END StartDefaultTask */
@@ -232,11 +231,11 @@ void StartTask02(void *argument)
 {
   /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
-         osDelay(1000);
+         osDelay(500);
   for(;;)
   {
 
-    float vofa_values[5];
+    // float vofa_values[5];
 
     // OLED_ShowString(40, 0, "        ", 16);
     // OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
@@ -247,12 +246,12 @@ void StartTask02(void *argument)
     // OLED_ShowString(24, 6, "        ", 16);
     // OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
 
-    vofa_values[0] = g_robot_pos.x / 10.0f;
-    vofa_values[1] = g_robot_pos.y / 10.0f;
-    vofa_values[2] = g_robot_pos.yaw;
-    vofa_values[3] = TofData / 10.0f;
-    vofa_values[4] = (float)navigation_state;
-    Vofa_SendFirewater(vofa_values, 5U);
+    // vofa_values[0] = g_robot_pos.x / 10.0f;
+    // vofa_values[1] = g_robot_pos.y / 10.0f;
+    // vofa_values[2] = g_robot_pos.yaw;
+    // vofa_values[3] = TofData / 10.0f;
+    // vofa_values[4] = (float)navigation_state;
+    // Vofa_SendFirewater(vofa_values, 5U);
     Tiancan_Process();
     osDelay(100);
  
@@ -270,7 +269,7 @@ void StartTask02(void *argument)
 void StartTask03(void *argument)
 { 
   /* USER CODE BEGIN StartTask03 */
-       osDelay(1000);
+       osDelay(500);
   /* Infinite loop */
   for(;;)
   {
@@ -288,11 +287,12 @@ void StartTask03(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartTask04 */
+//大闹脑
 void StartTask04(void *argument)
 {
  
     /* USER CODE BEGIN StartTask04 */
-       osDelay(1000);
+       osDelay(500);
        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   
   /* Infinite loop */
@@ -323,7 +323,7 @@ void StartTask05(void *argument)
 {
   /* USER CODE BEGIN StartTask05 */
   // PCA9685_Set180Angle(1U, 0.0f);
-       osDelay(1000);
+       osDelay(500);
 
   /* Infinite loop */
   for(;;)
@@ -348,6 +348,7 @@ void StartTask06(void *argument)
   /* Infinite loop */
   for(;;)
   {  Navigation_TaskTick();
+     
     osDelay(10);
   }
   /* USER CODE END StartTask06 */

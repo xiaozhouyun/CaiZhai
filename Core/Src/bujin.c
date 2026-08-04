@@ -372,4 +372,21 @@ void Emm_V5_Read_Zero_Status(uint8_t addr)
     Emm_Send(cmd, sizeof(cmd));
 }
 
+/**
+ * @brief  底盘四轮位置模式同步平移控制
+ * @param  dir  方向，0 为向后，1 为向前
+ * @param  vel  速度（RPM）
+ * @param  acc  加速度
+ * @param  mm   移动距离（mm）
+ */
+void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm)
+{
+    Emm_V5_Pos_Control(1, dir, vel, acc, mm, false, true);
+    Emm_V5_Pos_Control(2, dir, vel, acc, mm, false, true);
+    Emm_V5_Pos_Control(3, dir, vel, acc, mm, false, true);
+    Emm_V5_Pos_Control(4, dir, vel, acc, mm, false, true);
+    Emm_V5_Synchronous_motion(0);
+}
+
+
 

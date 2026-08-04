@@ -1,4 +1,5 @@
 #include "UpperCP.h"
+#include "cmsis_os.h"
 #include "vofa.h"
 #include "app.h"
 #include "arms.h"
@@ -7,6 +8,7 @@
 #include "usart.h"
 #include "voice.h"
 #include "tof200f.h"
+#include "bujin.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <math.h>
@@ -245,33 +247,39 @@ void Arm_func(void)
         for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
             sscanf(p_num, "%d", &temp_num);
         }
-        	if(temp_num == 1)		//目标偏右
-		{
-		    PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]+1);
-//			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
-		}else
-		if(temp_num == 2)		//目标偏左
-		{
-			PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]-1);
-//			Serial5_Printf("L_Angle_Tar=%f\r\n",Rotate_Angle_Real);
-		}else
+        if(temp_num == 1)       //目标偏右：整车向前移动 1cm (10.0mm)
+        {   
+            Emm_V5_Chassis_Pos_Control(1, 50, 50, 10.0f);
+            osDelay(pdMS_TO_TICKS(500U));
+        }else
+        if(temp_num == 2)       //目标偏左：整车向后移动 1cm (10.0mm)
+        {   
+            Emm_V5_Chassis_Pos_Control(0, 50, 50, 10.0f);
+            osDelay(pdMS_TO_TICKS(500U));
+        }else
 		if(temp_num == 3)		//目标偏上
 		{
 			Move_up(1);
+            osDelay(pdMS_TO_TICKS(500U));
 		}else
 		if(temp_num == 4)		//目标偏下
 		{
 			Move_down(1);
+            osDelay(pdMS_TO_TICKS(500U));
 		}
 		if(temp_num == 0)		//对准目标抓取
-		{
+		{   
+            // Chassis_SetSpeed(0.0f, 0.0f);
+            vTaskDelay(pdMS_TO_TICKS(500U));
 			if(upordownFlag == 0)	//抓地上
 			{
-				// get_dis();
+				get_dis();
 				vTaskDelay(pdMS_TO_TICKS(500U));
 				/* extend_cm 内部会拆成 100 步平滑执行。 */
-				// float dis_diff_temp = TofData / 10.0f - 1.0f;
-				extend_cm(10);//机械臂前移
+				float dis_diff_temp = TofData / 10.0f - 1.0f;
+                ZhuaZi_open();		//爪子张开
+                vTaskDelay(pdMS_TO_TICKS(800U));
+				extend_cm(dis_diff_temp);//机械臂前移
 	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(pdMS_TO_TICKS(800U));
@@ -288,9 +296,9 @@ void Arm_func(void)
 			if(upordownFlag == 0)
 			{
 				vTaskDelay(pdMS_TO_TICKS(200U));
-				Move_Pos(22);
+				Move_up(8.0f);
 				vTaskDelay(pdMS_TO_TICKS(2000U));
-                extend_cm(8);
+                Arm_ExtendZero();//伸缩归零
 				Arm_SetRotateAngle(0.0f);
 //				vTaskDelay(500);
 			App_NotifyGrabDone();
