@@ -14,6 +14,8 @@ extern uint8_t upordownFlag;     /**< 上下抓取目标状态标志位 (0：抓
 
 void UpperCP_RX(void);
 void UpperCP_UartRxByte(uint8_t data);
+void UpperCP_UartDmaStart(void);
+void UpperCP_UartDmaRxProcess(void);
 void UpperCP_SendTask(const char *task);
 const char *UpperCP_GetLastCommand(void);
 uint32_t UpperCP_GetRxCount(void);
@@ -29,4 +31,3 @@ void ErWeiMa_func(void);
 void Move_func(void);
 
 #endif
-

@@ -365,11 +365,10 @@ void UART5_IRQHandler(void)
     __HAL_UART_CLEAR_OREFLAG(&huart5);
   }
 
-  if (__HAL_UART_GET_FLAG(&huart5, UART_FLAG_RXNE) != RESET)
+  if (__HAL_UART_GET_FLAG(&huart5, UART_FLAG_IDLE) != RESET)
   {
-    uint8_t data = (uint8_t)(huart5.Instance->DR & 0xFF);
-    UpperCP_UartRxByte(data);
-    return;
+    __HAL_UART_CLEAR_IDLEFLAG(&huart5);
+    UpperCP_UartDmaRxProcess();
   }
   /* USER CODE END UART5_IRQn 0 */
   HAL_UART_IRQHandler(&huart5);

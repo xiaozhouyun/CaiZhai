@@ -17,6 +17,7 @@
 #include <string.h>
 
 #define UPPERCP_RX_BUF_LEN 128U
+#define UPPERCP_DMA_RX_BUF_LEN 128U
 #define UPPERCP_CMD_MOVE_GBK "\xD2\xC6\xB6\xAF"
 
 static volatile uint8_t uppercp_rx_buf[UPPERCP_RX_BUF_LEN];
@@ -24,6 +25,8 @@ static volatile uint16_t uppercp_rx_head;
 static volatile uint16_t uppercp_rx_tail;
 static volatile uint32_t uppercp_rx_count;
 static volatile uint8_t uppercp_last_byte;
+static uint8_t uppercp_dma_rx_buf[UPPERCP_DMA_RX_BUF_LEN];
+static uint16_t uppercp_dma_rx_pos;
 static char uppercp_cmd_buf[UPPERCP_RX_BUF_LEN];
 static char uppercp_last_cmd[UPPERCP_RX_BUF_LEN];
 static uint16_t uppercp_cmd_len;
@@ -62,6 +65,37 @@ void UpperCP_UartRxByte(uint8_t data)
 
     uppercp_rx_buf[uppercp_rx_head] = data;
     uppercp_rx_head = next_head;
+}
+
+void UpperCP_UartDmaStart(void)
+{
+    uppercp_dma_rx_pos = 0U;
+
+    if (HAL_UART_Receive_DMA(&huart5, uppercp_dma_rx_buf, UPPERCP_DMA_RX_BUF_LEN) != HAL_OK) {
+        Error_Handler();
+    }
+
+    __HAL_DMA_DISABLE_IT(huart5.hdmarx, DMA_IT_HT);
+    __HAL_DMA_DISABLE_IT(huart5.hdmarx, DMA_IT_TC);
+    __HAL_UART_ENABLE_IT(&huart5, UART_IT_IDLE);
+}
+
+void UpperCP_UartDmaRxProcess(void)
+{
+    uint16_t dma_rx_pos;
+
+    dma_rx_pos = (uint16_t)(UPPERCP_DMA_RX_BUF_LEN - __HAL_DMA_GET_COUNTER(huart5.hdmarx));
+    if (dma_rx_pos >= UPPERCP_DMA_RX_BUF_LEN) {
+        dma_rx_pos = 0U;
+    }
+
+    while (uppercp_dma_rx_pos != dma_rx_pos) {
+        UpperCP_UartRxByte(uppercp_dma_rx_buf[uppercp_dma_rx_pos]);
+        uppercp_dma_rx_pos++;
+        if (uppercp_dma_rx_pos >= UPPERCP_DMA_RX_BUF_LEN) {
+            uppercp_dma_rx_pos = 0U;
+        }
+    }
 }
 
 void UpperCP_SendTask(const char *task)
