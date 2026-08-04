@@ -143,7 +143,8 @@ void App_RunCurrentMode(void)
 //          PCA9685_Set270AngleSmooth(0.0f, 100U, 20U);
 //          (void)PCA9685_Set180AngleSmooth(5U, -80.0f, 100U, 10U);
 //        ZhuaZi_open();		//爪子张开
-        ZhuaZi_close();
+  PCA9685_Set180AngleSmooth(7U, -90, 150U, 10U);
+        // ZhuaZi_close();
            osDelay(2000U);
 //            Chassis_SetSpeed(0.0f, 0.0f);
             App_SetMode(APP_MODE_IDLE);

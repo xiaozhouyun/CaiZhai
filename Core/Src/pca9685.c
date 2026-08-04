@@ -212,22 +212,44 @@ int32_t PCA9685_Set180AngleSmooth(uint8_t channel, float target_angle_deg, uint1
     /* 2. 计算平均分配到每一步的角度递增量 */
     float step_angle = err / (float)steps;
 
-    /* 3. 分步循环累加角度并输出，将突变大动作离散平滑化，确保机械臂/舵机运动丝滑 */
-    for (uint16_t i = 0U; i < steps; i++)
+    /* 3. 匀速平滑驱动：使用绝对时间锚定（vTaskDelayUntil）替代相对延迟（vTaskDelay），
+     *    确保每一步的时间间隔绝对恒定，自动补偿 I2C 写入耗时波动，实现真正的匀速运动。
+     *    裸机环境下使用 HAL_GetTick 做补偿式延迟，减少抖动。 */
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
     {
-        current_angle += step_angle;
-        PCA9685_Set180Angle(channel, current_angle);
+        /* --- FreeRTOS：vTaskDelayUntil 绝对时间锚定，匀速输出 --- */
+        TickType_t xLastWakeTime = xTaskGetTickCount();
+        TickType_t xPeriod = pdMS_TO_TICKS(step_delay_ms);
 
-        if (step_delay_ms > 0U)
+        /* 防止 step_delay_ms 过小导致周期为 0 tick（vTaskDelayUntil 用 0 tick 是未定义行为） */
+        if (xPeriod == 0U)
         {
-            /* 兼容 RTOS 与裸机：若 FreeRTOS 调度器处于运行状态，使用 vTaskDelay 让出 CPU；否则降级使用 HAL_Delay 阻塞等待 */
-            if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+            xPeriod = 1U;
+        }
+
+        for (uint16_t i = 0U; i < steps; i++)
+        {
+            current_angle += step_angle;
+            PCA9685_Set180Angle(channel, current_angle);
+            vTaskDelayUntil(&xLastWakeTime, xPeriod);
+        }
+    }
+    else
+    {
+        /* --- 裸机：HAL_GetTick 补偿式延迟，扣除 I2C 耗时 --- */
+        for (uint16_t i = 0U; i < steps; i++)
+        {
+            uint32_t t_start = HAL_GetTick();
+            current_angle += step_angle;
+            PCA9685_Set180Angle(channel, current_angle);
+
+            if (step_delay_ms > 0U)
             {
-                vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
-            }
-            else
-            {
-                HAL_Delay(step_delay_ms);
+                uint32_t elapsed = HAL_GetTick() - t_start;
+                if (elapsed < step_delay_ms)
+                {
+                    HAL_Delay(step_delay_ms - elapsed);
+                }
             }
         }
     }
@@ -257,21 +279,41 @@ int32_t PCA9685_Set270AngleSmooth(float target_angle_deg, uint16_t steps, uint32
     /* 2. 计算平均分配到每一步的角度递增量 */
     float step_angle = err / (float)steps;
 
-    /* 3. 分步循环离散平滑动作 */
-    for (uint16_t i = 0U; i < steps; i++)
+    /* 3. 匀速平滑驱动：绝对时间锚定，确保步间间隔恒定 */
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
     {
-        current_angle += step_angle;
-        PCA9685_Set270Angle(current_angle);
+        /* --- FreeRTOS：vTaskDelayUntil 绝对时间锚定，匀速输出 --- */
+        TickType_t xLastWakeTime = xTaskGetTickCount();
+        TickType_t xPeriod = pdMS_TO_TICKS(step_delay_ms);
 
-        if (step_delay_ms > 0U)
+        if (xPeriod == 0U)
         {
-            if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+            xPeriod = 1U;
+        }
+
+        for (uint16_t i = 0U; i < steps; i++)
+        {
+            current_angle += step_angle;
+            PCA9685_Set270Angle(current_angle);
+            vTaskDelayUntil(&xLastWakeTime, xPeriod);
+        }
+    }
+    else
+    {
+        /* --- 裸机：HAL_GetTick 补偿式延迟 --- */
+        for (uint16_t i = 0U; i < steps; i++)
+        {
+            uint32_t t_start = HAL_GetTick();
+            current_angle += step_angle;
+            PCA9685_Set270Angle(current_angle);
+
+            if (step_delay_ms > 0U)
             {
-                vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
-            }
-            else
-            {
-                HAL_Delay(step_delay_ms);
+                uint32_t elapsed = HAL_GetTick() - t_start;
+                if (elapsed < step_delay_ms)
+                {
+                    HAL_Delay(step_delay_ms - elapsed);
+                }
             }
         }
     }

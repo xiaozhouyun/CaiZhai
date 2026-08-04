@@ -276,7 +276,7 @@ void StartTask02(void *argument)
 */
 /* USER CODE END Header_StartTask03 */
 void StartTask03(void *argument)
-{ 
+{
   /* USER CODE BEGIN StartTask03 */
        osDelay(500);
   /* Infinite loop */
@@ -296,11 +296,9 @@ void StartTask03(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartTask04 */
-//大闹脑
 void StartTask04(void *argument)
 {
- 
-    /* USER CODE BEGIN StartTask04 */
+  /* USER CODE BEGIN StartTask04 */
        osDelay(500);
        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   
@@ -350,7 +348,6 @@ void StartTask05(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartTask06 */
-//运行导航任务，周期 100ms
 void StartTask06(void *argument)
 {
   /* USER CODE BEGIN StartTask06 */
