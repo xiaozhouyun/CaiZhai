@@ -314,7 +314,7 @@ void Arm_func(void)
 		{
 			s_retry_count = 0;
 			if(upordownFlag == 0)
-			{   Move_Pos(10.0f);
+			{   Move_Pos(5.0f);
                 vTaskDelay(pdMS_TO_TICKS(500U));
                 Arm_ExtendZero();//伸缩归零
                 vTaskDelay(pdMS_TO_TICKS(1000U));
