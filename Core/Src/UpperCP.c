@@ -250,30 +250,60 @@ void Arm_func(void)
         /* 云台角度只读一次，temp_num 1/2 共用 */
         float gimbal_angle = PCA9685_Get180Angle(7U);
         
-        if(temp_num == 1)       //目标偏右：整车向前移动 1cm (10.0mm)
+        if(temp_num == 1)       //目标偏右
         {
-            // if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏右 = 车前进
-            // {
-            //     Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
-            // }
-            // else                        // 云台在左侧：方向反转，目标偏右 = 车后退
-            // {
-            //     Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
-            // }
-             PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]+1);
+            if (gimbal_angle >= 90.0f)   // 云台到右极限：大步前移
+            {
+                s_retry_count++;
+                if (s_retry_count >= 5)
+                {
+                    /* 放弃：同 arm:5 清理流程 */
+                    if (upordownFlag == 0)
+                    {
+                        Move_up(5.0f);
+                        vTaskDelay(pdMS_TO_TICKS(500U));
+                        Arm_ExtendZero();
+                        vTaskDelay(pdMS_TO_TICKS(1000U));
+                        Arm_SetRotateAngle(0.0f);
+                        vTaskDelay(pdMS_TO_TICKS(200U));
+                    }
+                    App_NotifyGrabDone();
+                    return;
+                }
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 50.0f);  // 前进 50mm
+            }
+            else
+            {
+                PCA9685_Set180Angle(7U, gimbal_angle + 1.0f);   // 云台右微调 +1°
+            }
             osDelay(pdMS_TO_TICKS(500U));
         }else
-        if(temp_num == 2)       //目标偏左：整车向后移动 1cm (10.0mm)
+        if(temp_num == 2)       //目标偏左
         {
-            // if (gimbal_angle > 0.0f)   // 云台在右侧：目标偏左 = 车后退
-            // {
-            //     Emm_V5_Chassis_Pos_Control(1, 20, 50, 10.0f);
-            // }
-            // else                        // 云台在左侧：方向反转，目标偏左 = 车前进
-            // {
-            //     Emm_V5_Chassis_Pos_Control(0, 50, 20, 10.0f);
-            // }
-            PCA9685_Set180Angle(7U,s_pca9685_180_angles[7]-1);
+            if (gimbal_angle <= -90.0f)  // 云台到左极限：大步前移
+            {
+                s_retry_count++;
+                if (s_retry_count >= 5)
+                {
+                    /* 放弃：同 arm:5 清理流程 */
+                    if (upordownFlag == 0)
+                    {
+                        Move_Pos(10.0f);
+                        vTaskDelay(pdMS_TO_TICKS(500U));
+                        Arm_ExtendZero();
+                        vTaskDelay(pdMS_TO_TICKS(1000U));
+                        Arm_SetRotateAngle(0.0f);
+                        vTaskDelay(pdMS_TO_TICKS(200U));
+                    }
+                    App_NotifyGrabDone();
+                    return;
+                }
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 50.0f);  // 前进 50mm
+            }
+            else
+            {
+                PCA9685_Set180Angle(7U, gimbal_angle - 1.0f);   // 云台左微调 -1°
+            }
             osDelay(pdMS_TO_TICKS(500U));
         }else
 		if(temp_num == 3)		//目标偏上
