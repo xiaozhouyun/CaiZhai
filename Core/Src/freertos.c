@@ -63,54 +63,54 @@
 /* USER CODE BEGIN Variables */
 
 /* USER CODE END Variables */
-/* Definitions for defaultTask */
+/* Definitions for defaultTask - 初始化与基础控制任务 */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityNormal, /* 优先级: osPriorityNormal (正常优先级) */
 };
-/* Definitions for myTask02 */
+/* Definitions for myTask02 - 天蚕传感器处理任务 */
 osThreadId_t myTask02Handle;
 const osThreadAttr_t myTask02_attributes = {
   .name = "myTask02",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal4,
+  .priority = (osPriority_t) osPriorityBelowNormal4, /* 优先级: osPriorityBelowNormal4 (低于正常4) */
 };
-/* Definitions for myTask03 */
+/* Definitions for myTask03 - 里程计与姿态更新任务 */
 osThreadId_t myTask03Handle;
 const osThreadAttr_t myTask03_attributes = {
   .name = "myTask03",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal5,
+  .priority = (osPriority_t) osPriorityBelowNormal5, /* 优先级: osPriorityBelowNormal5 (低于正常5) */
 };
-/* Definitions for myTask04 */
+/* Definitions for myTask04 - 主应用App逻辑调度任务 */
 osThreadId_t myTask04Handle;
 const osThreadAttr_t myTask04_attributes = {
   .name = "myTask04",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal6,
+  .priority = (osPriority_t) osPriorityBelowNormal6, /* 优先级: osPriorityBelowNormal6 (低于正常6) */
 };
-/* Definitions for myTask05 */
+/* Definitions for myTask05 - 上位机通信接收任务 */
 osThreadId_t myTask05Handle;
 const osThreadAttr_t myTask05_attributes = {
   .name = "myTask05",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal7,
+  .priority = (osPriority_t) osPriorityBelowNormal7, /* 优先级: osPriorityBelowNormal7 (低于正常7) */
 };
-/* Definitions for myTask06 */
+/* Definitions for myTask06 - 导航与路径跟踪TaskTick任务 */
 osThreadId_t myTask06Handle;
 const osThreadAttr_t myTask06_attributes = {
   .name = "myTask06",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityNormal, /* 优先级: osPriorityNormal (正常优先级) */
 };
-/* Definitions for myTask07 */
+/* Definitions for myTask07 - 保留/后台高优先级任务 */
 osThreadId_t myTask07Handle;
 const osThreadAttr_t myTask07_attributes = {
   .name = "myTask07",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal1,
+  .priority = (osPriority_t) osPriorityNormal1, /* 优先级: osPriorityNormal1 (高于正常1) */
 };
 /* Definitions for usart2TX */
 osMutexId_t usart2TXHandle;
@@ -203,6 +203,8 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE BEGIN Header_StartDefaultTask */
 /**
   * @brief  Function implementing the defaultTask thread.
+  *         优先级: osPriorityNormal (正常优先级)
+  *         功能: 系统初始化与基础移动控制任务
   * @param  argument: Not used
   * @retval None
   */
@@ -225,6 +227,8 @@ void StartDefaultTask(void *argument)
 /* USER CODE BEGIN Header_StartTask02 */
 /**
 * @brief Function implementing the myTask02 thread.
+*        优先级: osPriorityBelowNormal4 (低于正常优先级 4)
+*        功能: 天蚕/天灿传感器及传感器数据处理任务
 * @param argument: Not used
 * @retval None
 */
@@ -239,14 +243,14 @@ void StartTask02(void *argument)
 
     // float vofa_values[5];
 
-    // OLED_ShowString(40, 0, "        ", 16);
-    // OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
-    // OLED_ShowString(40, 2, "        ", 16);
-    // OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
-    // OLED_ShowString(24, 4, "        ", 16);
-    // OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
-    // OLED_ShowString(24, 6, "        ", 16);
-    // OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+    OLED_ShowString(40, 0, "        ", 16);
+    OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
+    OLED_ShowString(40, 2, "        ", 16);
+    OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
+    OLED_ShowString(24, 4, "        ", 16);
+    OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
+    OLED_ShowString(24, 6, "        ", 16);
+    OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
 
     // vofa_values[0] = g_robot_pos.x / 10.0f;
     // vofa_values[1] = g_robot_pos.y / 10.0f;
@@ -271,6 +275,8 @@ void StartTask02(void *argument)
 /* USER CODE BEGIN Header_StartTask03 */
 /**
 * @brief Function implementing the myTask03 thread.
+*        优先级: osPriorityBelowNormal5 (低于正常优先级 5)
+*        功能: 航向角获取与里程计位置姿态解算更新任务
 * @param argument: Not used
 * @retval None
 */
@@ -292,6 +298,8 @@ void StartTask03(void *argument)
 /* USER CODE BEGIN Header_StartTask04 */
 /**
 * @brief Function implementing the myTask04 thread.
+*        优先级: osPriorityBelowNormal6 (低于正常优先级 6)
+*        功能: 主应用 App 模式与应用逻辑调度任务
 * @param argument: Not used
 * @retval None
 */
@@ -322,6 +330,8 @@ void StartTask04(void *argument)
 /* USER CODE BEGIN Header_StartTask05 */
 /**
 * @brief Function implementing the myTask05 thread.
+*        优先级: osPriorityBelowNormal7 (低于正常优先级 7)
+*        功能: 上位机串口通信接收处理任务
 * @param argument: Not used
 * @retval None
 */
@@ -344,6 +354,8 @@ void StartTask05(void *argument)
 /* USER CODE BEGIN Header_StartTask06 */
 /**
 * @brief Function implementing the myTask06 thread.
+*        优先级: osPriorityNormal (正常优先级)
+*        功能: 底盘导航控制与路径跟踪计算任务 (10ms Tick)
 * @param argument: Not used
 * @retval None
 */
@@ -363,6 +375,8 @@ void StartTask06(void *argument)
 /* USER CODE BEGIN Header_StartTask07 */
 /**
 * @brief Function implementing the myTask07 thread.
+*        优先级: osPriorityNormal1 (高于正常优先级 1)
+*        功能: 高优先级后台保留任务 / 空闲延时任务
 * @param argument: Not used
 * @retval None
 */

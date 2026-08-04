@@ -286,7 +286,7 @@ void Arm_func(void)
         
         if(temp_num == 1)       //目标偏右
         {
-            if (gimbal_angle >= 90.0f)   // 云台到右极限：大步前移
+            if (gimbal_angle <= -90.0f)   // 云台到右极限：大步前移
             {
                 s_retry_count++;
                 if (s_retry_count >= 5)
@@ -304,7 +304,7 @@ void Arm_func(void)
                     App_NotifyGrabDone();
                     return;
                 }
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 100.0f);  // 前进 50mm
+                Emm_V5_Chassis_Pos_Control(1, 50, 20, 100.0f);  // 前进 50mm
             }
             else
             {
@@ -314,7 +314,7 @@ void Arm_func(void)
         }else
         if(temp_num == 2)       //目标偏左
         {
-            if (gimbal_angle <= -90.0f)  // 云台到左极限：大步前移
+            if (gimbal_angle >= 90.0f)  // 云台到左极限：大步前移
             {
                 s_retry_count++;
                 if (s_retry_count >= 5)
@@ -332,7 +332,7 @@ void Arm_func(void)
                     App_NotifyGrabDone();
                     return;
                 }
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 100.0f);  // 前进 50mm
+                Emm_V5_Chassis_Pos_Control(1, 50, 20, 100.0f);  // 前进 50mm
             }
             else
             {

@@ -124,25 +124,35 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
- if (PCA9685_Init() != 0)//舵机初始化
- {
-   Error_Handler();
- }
+  /* ================= 1. 舵机驱动初始化 (PCA9685) ================= */
+  if (PCA9685_Init() != 0)
+  {
+    Error_Handler(); /* 舵机驱动芯片初始化失败，进入异常处理 */
+  }
+  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
+  HAL_Delay(100U);           /* 延时 100ms 确保舵机转动到初始零位 */
 
- PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
-  HAL_Delay(100U);
-  uint32_t hwt_wait_start;
-   HWT101_HAL_Init();
-  g_hwt101_data_ready = 0;
-  hwt_wait_start = HAL_GetTick();
+  /* ================= 2. 显示屏与传感器初始化 ================= */
+  OLED_Init();               /* 初始化 OLED 显示屏 */
+  TOF200F_Init();            /* 初始化 TOF200F 激光测距传感器 */
+
+  /* ================= 3. 姿态传感器初始化 (HWT101) ================= */
+  HWT101_HAL_Init();         /* 初始化 HWT101 陀螺仪/姿态传感器 */
+  g_hwt101_data_ready = 0;   /* 重置数据准备就绪标志位 */
+
+  uint32_t hwt_wait_start = HAL_GetTick();
+  /* 等待 HWT101 姿态数据完成首次采集（超时时间 1000ms） */
   while (g_hwt101_data_ready == 0 && (HAL_GetTick() - hwt_wait_start) < 1000)
   {
   }
+
+  /* ================= 4. 导航定位与里程计初始化 ================= */
+  /* 使用 HWT101 获取到的初始航向角 (g_hwt101_yaw) 以及设定好的地图起始坐标重置导航 */
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
-  Odometer_Init();
-    upordownFlag = 0; /* 初始化上下抓取标志位为 0 (默认 0:抓地上，1:抓树上) */
-   TOF200F_Init();
-//  OLED_Init();
+  Odometer_Init();           /* 初始化编码器里程计 */
+
+  /* ================= 5. 业务逻辑与状态标志位初始化 ================= */
+  upordownFlag = 0;          /* 初始化上下抓取标志位 (默认 0: 抓地上，1: 抓树上) */
   /* USER CODE END 2 */
 
   /* Init scheduler */

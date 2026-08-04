@@ -3,6 +3,26 @@
 
 static uint8_t OLED_GRAM[128][8];
 
+#define OLED_I2C_DELAY_US 5U
+
+static void OLED_I2C_DelayUs(uint32_t us)
+{
+    uint32_t start;
+    uint32_t cycles_per_us = SystemCoreClock / 1000000U;
+
+    if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0U)
+    {
+        CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+        DWT->CYCCNT = 0U;
+        DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    }
+
+    start = DWT->CYCCNT;
+    while ((uint32_t)(DWT->CYCCNT - start) < (cycles_per_us * us))
+    {
+    }
+}
+
 static void OLED_W_SCL(uint8_t value)
 {
     HAL_GPIO_WritePin(OLED_SCL_GPIO_Port, OLED_SCL_Pin, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
@@ -19,52 +39,93 @@ static void OLED_I2C_Init(void)
     OLED_W_SDA(1);
 }
 
-static void OLED_I2C_Start(void)
+static uint8_t OLED_I2C_Start(void)
 {
     OLED_W_SDA(1);
     OLED_W_SCL(1);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
+    if ((HAL_GPIO_ReadPin(OLED_SDA_GPIO_Port, OLED_SDA_Pin) != GPIO_PIN_SET) ||
+        (HAL_GPIO_ReadPin(OLED_SCL_GPIO_Port, OLED_SCL_Pin) != GPIO_PIN_SET))
+    {
+        return OLED_ERROR;
+    }
     OLED_W_SDA(0);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
     OLED_W_SCL(0);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
+
+    return OLED_OK;
 }
 
 static void OLED_I2C_Stop(void)
 {
     OLED_W_SDA(0);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
     OLED_W_SCL(1);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
     OLED_W_SDA(1);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
 }
 
-static void OLED_I2C_SendByte(uint8_t Byte)
+static uint8_t OLED_I2C_WaitAck(void)
+{
+    uint8_t result;
+
+    OLED_W_SDA(1);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
+    OLED_W_SCL(1);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
+    result = (HAL_GPIO_ReadPin(OLED_SDA_GPIO_Port, OLED_SDA_Pin) == GPIO_PIN_RESET) ? OLED_OK : OLED_ERROR;
+    OLED_W_SCL(0);
+    OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
+
+    return result;
+}
+
+static uint8_t OLED_I2C_SendByte(uint8_t Byte)
 {
     uint8_t i;
 
     for (i = 0; i < 8; i++)
     {
         OLED_W_SDA((uint8_t)!!(Byte & (0x80 >> i)));
+        OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
         OLED_W_SCL(1);
+        OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
         OLED_W_SCL(0);
+        OLED_I2C_DelayUs(OLED_I2C_DELAY_US);
     }
 
-    OLED_W_SCL(1);
-    OLED_W_SCL(0);
+    return OLED_I2C_WaitAck();
+}
+
+static uint8_t OLED_I2C_Write(uint8_t control, uint8_t value)
+{
+    if (OLED_I2C_Start() != OLED_OK)
+    {
+        return OLED_ERROR;
+    }
+
+    if ((OLED_I2C_SendByte(OLED_Address) != OLED_OK) ||
+        (OLED_I2C_SendByte(control) != OLED_OK) ||
+        (OLED_I2C_SendByte(value) != OLED_OK))
+    {
+        OLED_I2C_Stop();
+        return OLED_ERROR;
+    }
+
+    OLED_I2C_Stop();
+    return OLED_OK;
 }
 
 void OLED_Write_Command(uint8_t IIC_Command)
 {
-    OLED_I2C_Start();
-    OLED_I2C_SendByte(OLED_Address);
-    OLED_I2C_SendByte(OLED_Cmd_Address);
-    OLED_I2C_SendByte(IIC_Command);
-    OLED_I2C_Stop();
+    (void)OLED_I2C_Write(OLED_Cmd_Address, IIC_Command);
 }
 
 void OLED_Write_Data(uint8_t IIC_Data)
 {
-    OLED_I2C_Start();
-    OLED_I2C_SendByte(OLED_Address);
-    OLED_I2C_SendByte(OLED_Data_Address);
-    OLED_I2C_SendByte(IIC_Data);
-    OLED_I2C_Stop();
+    (void)OLED_I2C_Write(OLED_Data_Address, IIC_Data);
 }
 
 void OLED_WR_Byte(uint8_t dat, uint8_t cmd)
@@ -335,40 +396,29 @@ void OLED_DrawBMP(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, const uint8_t 
     }
 }
 
-void OLED_Init(void)
+uint8_t OLED_Init(void)
 {
+    static const uint8_t init_commands[] = {
+        0xAE, 0x00, 0x10, 0x40, 0xB0, 0x81, 0xFF, 0xA1,
+        0xA6, 0xA8, 0x3F, 0xC8, 0xD3, 0x00, 0xD5, 0x80,
+        0xD8, 0x05, 0xD9, 0xF1, 0xDA, 0x12, 0xDB, 0x30,
+        0x8D, 0x14, 0xAF
+    };
+    uint8_t i;
+
     OLED_I2C_Init();
     HAL_Delay(1);
 
-    OLED_WR_Byte(0xAE, 0);
-    OLED_WR_Byte(0x00, 0);
-    OLED_WR_Byte(0x10, 0);
-    OLED_WR_Byte(0x40, 0);
-    OLED_WR_Byte(0xB0, 0);
-    OLED_WR_Byte(0x81, 0);
-    OLED_WR_Byte(0xFF, 0);
-    OLED_WR_Byte(0xA1, 0);
-    OLED_WR_Byte(0xA6, 0);
-    OLED_WR_Byte(0xA8, 0);
-    OLED_WR_Byte(0x3F, 0);
-    OLED_WR_Byte(0xC8, 0);
-    OLED_WR_Byte(0xD3, 0);
-    OLED_WR_Byte(0x00, 0);
-    OLED_WR_Byte(0xD5, 0);
-    OLED_WR_Byte(0x80, 0);
-    OLED_WR_Byte(0xD8, 0);
-    OLED_WR_Byte(0x05, 0);
-    OLED_WR_Byte(0xD9, 0);
-    OLED_WR_Byte(0xF1, 0);
-    OLED_WR_Byte(0xDA, 0);
-    OLED_WR_Byte(0x12, 0);
-    OLED_WR_Byte(0xDB, 0);
-    OLED_WR_Byte(0x30, 0);
-    OLED_WR_Byte(0x8D, 0);
-    OLED_WR_Byte(0x14, 0);
-    OLED_WR_Byte(0xAF, 0);
+    for (i = 0U; i < (uint8_t)sizeof(init_commands); i++)
+    {
+        if (OLED_I2C_Write(OLED_Cmd_Address, init_commands[i]) != OLED_OK)
+        {
+            return OLED_ERROR;
+        }
+    }
 
     OLED_Clear();
+    return OLED_OK;
 }
 
 void Boot_Animation(void)
