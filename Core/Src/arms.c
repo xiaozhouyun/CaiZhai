@@ -137,7 +137,7 @@ void ZhuaZi_open(void)
 void Arm_put(void)
 {
     /* 缩回抬升后旋转 */
-   Move_up(5.0f);
+   Move_up(10.0f);
     vTaskDelay(pdMS_TO_TICKS(100U));
     PCA9685_Set180AngleSmooth(6U, -80, 100U, 10U); // 6U 云台回中
     vTaskDelay(pdMS_TO_TICKS(100U));

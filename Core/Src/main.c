@@ -125,7 +125,7 @@ int main(void)
  {
    Error_Handler();
  }
-//   Emm_V5_Trigger_Zero(5, ZERO_MODE_NEAR_ORIGIN_HOME, false);
+ Move_Pos(5.0f);
  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
   HAL_Delay(100U);
   uint32_t hwt_wait_start;
@@ -135,16 +135,9 @@ int main(void)
   while (g_hwt101_data_ready == 0 && (HAL_GetTick() - hwt_wait_start) < 1000)
   {
   }
-// Emm_V5_Set_Zero(5U,1);
-// Emm_V5_Trigger_Zero(5, ZERO_MODE_NEAR_ORIGIN_HOME, false);
-    // HAL_Delay(100U);
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();
-
     upordownFlag = 0; /* 初始化上下抓取标志位为 0 (默认 0:抓地上，1:抓树上) */
- 
-    HAL_Delay(1000U);
-
    TOF200F_Init();
 //  OLED_Init();
   /* USER CODE END 2 */

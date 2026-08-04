@@ -287,7 +287,6 @@ void Arm_func(void)
 		}else
 		if(temp_num == 0)		//对准目标抓取
 		{   
-            // Chassis_SetSpeed(0.0f, 0.0f);
 			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
@@ -298,6 +297,7 @@ void Arm_func(void)
                 vTaskDelay(pdMS_TO_TICKS(800U));
 				extend_cm(dis_diff_temp);//机械臂前移
 	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
+             	vTaskDelay(pdMS_TO_TICKS(100U));
 				ZhuaZi_close();		//爪子夹住
 				vTaskDelay(pdMS_TO_TICKS(800U));
 				Arm_put();			//放置果子
@@ -311,12 +311,12 @@ void Arm_func(void)
 //视觉系统判断当前这个水果不值得抓（比如误识别、已被采摘、角度太偏无法抓取），就发 arm:5 指令让机械臂复位跳过，
 		{
 			if(upordownFlag == 0)
-			{
+			{   Move_Pos(5.0f);
+                vTaskDelay(pdMS_TO_TICKS(500U));
                 Arm_ExtendZero();//伸缩归零
                 vTaskDelay(pdMS_TO_TICKS(1000U));
 				Arm_SetRotateAngle(0.0f);
                 	vTaskDelay(pdMS_TO_TICKS(200U));
-//				vTaskDelay(500);
 			App_NotifyGrabDone();
 			}
 			if(upordownFlag == 1)
