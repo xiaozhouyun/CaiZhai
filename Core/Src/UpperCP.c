@@ -260,7 +260,7 @@ void Arm_func(void)
                     /* 放弃：同 arm:5 清理流程 */
                     if (upordownFlag == 0)
                     {
-                        Move_up(5.0f);
+                        Move_Pos(5.0f);
                         vTaskDelay(pdMS_TO_TICKS(500U));
                         Arm_ExtendZero();
                         vTaskDelay(pdMS_TO_TICKS(1000U));
@@ -288,7 +288,7 @@ void Arm_func(void)
                     /* 放弃：同 arm:5 清理流程 */
                     if (upordownFlag == 0)
                     {
-                        Move_Pos(10.0f);
+                        Move_Pos(5.0f);
                         vTaskDelay(pdMS_TO_TICKS(500U));
                         Arm_ExtendZero();
                         vTaskDelay(pdMS_TO_TICKS(1000U));
