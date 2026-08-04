@@ -118,7 +118,7 @@ void Arm_ExtendZero(void)
   */
 void ZhuaZi_close(void)
 {
-    (void)PCA9685_Set180AngleSmooth(5U, 5.0f, 100U, 10U);
+    (void)PCA9685_Set180AngleSmooth(5U, 3.0f, 100U, 10U);
 }
 
 /**
@@ -137,7 +137,7 @@ void ZhuaZi_open(void)
 void Arm_put(void)
 {
     /* 缩回抬升后旋转 */
-   Move_up(10.0f);
+   Move_Pos(10.0f);
     vTaskDelay(pdMS_TO_TICKS(100U));
     PCA9685_Set180AngleSmooth(6U, -80, 100U, 10U); // 6U 云台回中
     vTaskDelay(pdMS_TO_TICKS(100U));
@@ -146,7 +146,6 @@ void Arm_put(void)
      ZhuaZi_open();
        vTaskDelay(pdMS_TO_TICKS(1000U));
     /* 开爪 */
-    vTaskDelay(pdMS_TO_TICKS(800U));
 }
 
 /**
