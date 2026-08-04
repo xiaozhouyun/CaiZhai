@@ -270,11 +270,11 @@ void Arm_func(void)
                     App_NotifyGrabDone();
                     return;
                 }
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 50.0f);  // 前进 50mm
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 100.0f);  // 前进 50mm
             }
             else
             {
-                PCA9685_Set180Angle(7U, gimbal_angle + 1.0f);   // 云台右微调 +1°
+                PCA9685_Set180Angle(7U, gimbal_angle - 1.0f);   // 云台右微调 +1°
             }
             osDelay(pdMS_TO_TICKS(500U));
         }else
@@ -298,11 +298,11 @@ void Arm_func(void)
                     App_NotifyGrabDone();
                     return;
                 }
-                Emm_V5_Chassis_Pos_Control(0, 50, 20, 50.0f);  // 前进 50mm
+                Emm_V5_Chassis_Pos_Control(0, 50, 20, 100.0f);  // 前进 50mm
             }
             else
             {
-                PCA9685_Set180Angle(7U, gimbal_angle - 1.0f);   // 云台左微调 -1°
+                PCA9685_Set180Angle(7U, gimbal_angle + 1.0f);   // 云台左微调 -1°
             }
             osDelay(pdMS_TO_TICKS(500U));
         }else

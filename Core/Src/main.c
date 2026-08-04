@@ -125,7 +125,7 @@ int main(void)
  {
    Error_Handler();
  }
- Move_Pos(5.0f);
+
  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
   HAL_Delay(100U);
   uint32_t hwt_wait_start;

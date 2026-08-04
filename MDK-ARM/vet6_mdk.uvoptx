@@ -157,9 +157,9 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>276</LineNumber>
+          <LineNumber>285</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134231264</Address>
+          <Address>134231424</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -168,14 +168,14 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\Core\Src\UpperCP.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\276</Expression>
+          <Expression>\\\../Core/Src/UpperCP.c\285</Expression>
         </Bp>
         <Bp>
           <Number>1</Number>
           <Type>0</Type>
-          <LineNumber>291</LineNumber>
+          <LineNumber>273</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134231392</Address>
+          <Address>134231400</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -184,7 +184,23 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\Core\Src\UpperCP.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\291</Expression>
+          <Expression>\\\../Core/Src/UpperCP.c\273</Expression>
+        </Bp>
+        <Bp>
+          <Number>2</Number>
+          <Type>0</Type>
+          <LineNumber>301</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>134231436</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>1</BreakIfRCount>
+          <Filename>..\Core\Src\UpperCP.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression>\\vet6_mdk\../Core/Src/UpperCP.c\301</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
@@ -244,6 +260,16 @@
           <count>1</count>
           <WinNumber>2</WinNumber>
           <ItemText>g_nav_y_cm</ItemText>
+        </Ww>
+        <Ww>
+          <count>2</count>
+          <WinNumber>2</WinNumber>
+          <ItemText>PCA9685_Get180Angle</ItemText>
+        </Ww>
+        <Ww>
+          <count>3</count>
+          <WinNumber>2</WinNumber>
+          <ItemText>s_pca9685_180_angles[channel]</ItemText>
         </Ww>
       </WatchWindow2>
       <Tracepoint>

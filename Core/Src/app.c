@@ -203,8 +203,13 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
 
         /* 2. 到达目标点且底盘停稳后，只有当该航点配置了 has_action == true 时才执行舵机动作 */
         if (App_IsRunning() && route[i].has_action) {
+               Move_Pos(8.0f);
+                 osDelay(500U);
             PCA9685_Set180AngleSmooth(7U, 90, 150U, 10U);
+             Move_Pos(0.0f);
+              
             osDelay(500U);
+          
             s_caizhai_tast_id = osThreadGetId();
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
@@ -212,7 +217,11 @@ static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
             (void)osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, osWaitForever);
            
             //回零
+             Move_Pos(8.0f);
+                 osDelay(500U);
              PCA9685_Set180AngleSmooth(7U, -90, 150U, 10U);
+                  Move_Pos(0.0f);
+     
             osDelay(500U);
             (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
             UpperCP_SendTask("send");
