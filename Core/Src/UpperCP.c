@@ -102,6 +102,7 @@ uint8_t PosFlag = 1;
 float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
 uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
+static uint8_t s_retry_count = 0;  /**< 云台极限重试计数器 */
 
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
 uint8_t fruits[8] = {4,3,1,10,8,9,2,11};
@@ -286,7 +287,8 @@ void Arm_func(void)
             osDelay(pdMS_TO_TICKS(500U));
 		}else
 		if(temp_num == 0)		//对准目标抓取
-		{   
+		{
+			s_retry_count = 0;
 			if(upordownFlag == 0)	//抓地上
 			{
 				get_dis();
@@ -310,8 +312,9 @@ void Arm_func(void)
 		} else if (temp_num == 5) //视觉系统判断当前水果不值得抓，机械臂复位并跳过
 //视觉系统判断当前这个水果不值得抓（比如误识别、已被采摘、角度太偏无法抓取），就发 arm:5 指令让机械臂复位跳过，
 		{
+			s_retry_count = 0;
 			if(upordownFlag == 0)
-			{   Move_Pos(5.0f);
+			{   Move_Pos(10.0f);
                 vTaskDelay(pdMS_TO_TICKS(500U));
                 Arm_ExtendZero();//伸缩归零
                 vTaskDelay(pdMS_TO_TICKS(1000U));
