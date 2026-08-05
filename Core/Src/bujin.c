@@ -240,14 +240,8 @@ static void Emm_V5_Pos_Control_ByPulse(uint8_t addr, uint8_t dir, uint16_t vel, 
         0x6B,
     };
 
-    if (addr == 5U)
-    {
-        Vofa_Printf("[EMM_POS_TX] addr=%u dir=%u vel=%u acc=%u pulse=%lu rel=%u sync=%u\r\n",
-                    (unsigned int)addr, (unsigned int)dir, (unsigned int)vel,
-                    (unsigned int)acc, (unsigned long)pulse,
-                    (unsigned int)raF, (unsigned int)snF);
-    }
     Emm_Send(cmd, sizeof(cmd));
+    /* 调试打印移到发送之后，避免阻塞延迟导致 TX 队列被其他模块填满后丢帧 */
     osDelay(5);
 }
 

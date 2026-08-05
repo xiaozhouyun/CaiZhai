@@ -224,10 +224,19 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
       osDelay(100);
+
+      /* 使能四轮驱动电机，snF=true 等待同步触发 */
+      Emm_V5_En_Control(1, true, true);
+      Emm_V5_En_Control(2, true, true);
+      Emm_V5_En_Control(3, true, true);
+      Emm_V5_En_Control(4, true, true);
+         Emm_V5_En_Control(5, true, true);
+      Emm_V5_Synchronous_motion(0);
+
       Navigation_Stop();
   /* Infinite loop */
   for(;;){
-      
+
     osDelay(100);
   }
   /* USER CODE END StartDefaultTask */

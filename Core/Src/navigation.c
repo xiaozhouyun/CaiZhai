@@ -53,7 +53,7 @@ TiancanPid_t movepid = {
 
 #define MOVE_ARRIVE_DIST          5.0f         /**< 目标点判定范围半径，小于 20mm 认为到达 (mm) */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MAX_ANGULAR          5.0f          /**< 直线纠偏中最大角速度限制 (rad/s) */
+#define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
@@ -74,7 +74,7 @@ TiancanPid_t arrivedpid = {
 };
 
 #define ARRIVED_MAX_ANGULAR       1.5f          /**< 终点最大角速度限制 (rad/s) */
-#define ARRIVED_ERR_THRESH        0.02f         /**< 最终角度对齐允许最大误差 (rad) */
+#define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad) */
 
 /* 状态机全局变量 */
 Navigation_State_t navigation_state = NAVIGATION_STATE_IDLE;
@@ -141,7 +141,7 @@ void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg)
     navigation_state = NAVIGATION_STATE_IDLE;
     /*
      * 此处仍处于 main() 的调度器启动前阶段，只初始化导航状态。
-     * 电机停止帧由 StartTask04() 在 FreeRTOS 运行后调用 Navigation_Stop() 下发，
+     * 电机使能与停止帧由 StartDefaultTask() 在 FreeRTOS 运行后统一下发，
      * 避免在启动阶段进入包含 osDelay() 的 USART2 电机通信链。
      */
 }

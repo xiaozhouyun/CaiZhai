@@ -22,12 +22,15 @@ float volatile now_pos = 0.0f;
   */
 void Move_up(float Data_cm)
 {
+    uint32_t drops_before = Emm_GetTxDropCount();
+
     Emm_ClearPendingTxQueue();
     Emm_V5_PosUP_Control(5, 0, 500, 200, Data_cm * 10.0f, false, 0);
-    // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
-    //             now_pos + Data_cm, now_pos, Data_cm,
-    //             (unsigned long)Emm_GetTxDropCount());
-    now_pos += Data_cm;
+
+    /* 仅当未发生丢帧时才更新位置跟踪，防止 now_pos 与实际物理位置脱节 */
+    if (Emm_GetTxDropCount() == drops_before) {
+        now_pos += Data_cm;
+    }
 }
 
 /**
@@ -36,13 +39,15 @@ void Move_up(float Data_cm)
   */
 void Move_down(float Data_cm)
 {
+    uint32_t drops_before = Emm_GetTxDropCount();
+
     Emm_ClearPendingTxQueue();
     Emm_V5_PosUP_Control(5, 1, 500, 200, Data_cm * 10.0f, false, 0);
-    // Vofa_Printf("[LIFT_SYNC_TX] broadcast=0\r\n");
-    // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
-    //             now_pos - Data_cm, now_pos, -Data_cm,
-    //             (unsigned long)Emm_GetTxDropCount());
-    now_pos -= Data_cm;
+
+    /* 仅当未发生丢帧时才更新位置跟踪，防止 now_pos 与实际物理位置脱节 */
+    if (Emm_GetTxDropCount() == drops_before) {
+        now_pos -= Data_cm;
+    }
 }
 
 /**
@@ -52,16 +57,23 @@ void Move_down(float Data_cm)
 void Move_Pos(float Tar_pos)
 {
     float move_pos = Tar_pos - now_pos;
+    float prev_pos = now_pos;
 
     if (move_pos > 0.0f)
     {
         Move_up(move_pos);
     }
-    else
+    else if (move_pos < 0.0f)
     {
         Move_down(-move_pos);
     }
 
+    /* 仅当 Move_up/Move_down 确认更新了 now_pos 时，才同步；
+     * 若丢帧导致 now_pos 未变，保留原值等待下次重试，避免位置跟踪漂移。 */
+    if (now_pos == prev_pos && move_pos != 0.0f) {
+        /* 升降指令未能发送，now_pos 未更新，本次不覆盖 */
+        return;
+    }
     now_pos = Tar_pos;
 }
 
