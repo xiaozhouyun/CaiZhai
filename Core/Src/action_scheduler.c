@@ -22,7 +22,7 @@
 #define ARM_CLAW_OPEN_MS              800U   /* 开爪到完全张开 */
 #define ARM_EXTEND_SETTLE_MS         1500U   /* 伸缩臂移动到测距目标 */
 #define ARM_CLAW_CLOSE_MS             800U   /* 闭爪后等待夹紧果实 */
-#define ARM_PUT_LIFT_SETTLE_MS       3000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_PUT_LIFT_SETTLE_MS       2000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_RETRACT_SETTLE_MS        1200U   /* 伸缩臂完全收回 */
 #define ARM_GIMBAL_CENTER_MS         1000U   /* 云台回到中位 */
 #define ARM_CLAW_RELEASE_MS          1000U   /* 开爪后等待果实脱离 */
@@ -479,7 +479,7 @@ void ActionScheduler_Tick(void)
     case ACTION_SKIP_WAIT_EXTEND:
         /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
         Move_Pos(10.0f);
-        osDelay(2000U);
+        osDelay(1000U);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("SKIP_LIFT", 5U);
