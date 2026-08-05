@@ -304,7 +304,7 @@ void StartTask03(void *argument)
   for(;;)
   {
      g_robot_pos.yaw = Get_zeroYaw();
-     Odometer_Update();
+       Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask03 */
@@ -371,8 +371,11 @@ void StartTask06(void *argument)
   /* USER CODE BEGIN StartTask06 */
   /* Infinite loop */
   for(;;)
-  {  Navigation_TaskTick();
-     
+  
+  { 
+    
+      Navigation_TaskTick();
+    
     osDelay(10);
   }
   /* USER CODE END StartTask06 */

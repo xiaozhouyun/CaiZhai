@@ -16,8 +16,8 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
-#define APP_ROUTE_LOWER_SETTLE_MS     2000U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
+#define APP_ROUTE_LIFT_SETTLE_MS      3000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LOWER_SETTLE_MS     3000U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
 #define WAYPOINT_NO_ACT(x, y, yaw)  {(x), (y), (yaw), false}
@@ -285,7 +285,7 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        Move_Pos(1.0f);
+        Move_Pos(2.0f);
         s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
@@ -318,7 +318,7 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        Move_Pos(1.0f);
+        Move_Pos(2.0f);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;

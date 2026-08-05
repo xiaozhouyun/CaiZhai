@@ -115,6 +115,11 @@ void Emm_UartErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
+uint32_t Emm_GetTxDropCount(void)
+{
+    return s_emm_tx_drop_count;
+}
+
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
     Emm_UartTxCpltCallback(huart);

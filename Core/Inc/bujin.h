@@ -62,4 +62,5 @@ void Emm_V5_PosUP_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, 
 void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm);
 void Emm_UartTxCpltCallback(UART_HandleTypeDef *huart);
 void Emm_UartErrorCallback(UART_HandleTypeDef *huart);
+uint32_t Emm_GetTxDropCount(void);
 #endif

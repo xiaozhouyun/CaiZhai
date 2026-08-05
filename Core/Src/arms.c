@@ -6,6 +6,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include "action_scheduler.h"
+#include "vofa.h"
 
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
@@ -21,8 +22,11 @@ float now_pos = 0.0f;
   */
 void Move_up(float Data_cm)
 {
-    Emm_V5_PosUP_Control(5, 0, 50, 50, Data_cm * 10.0f, false, true);
+    Emm_V5_PosUP_Control(5, 0, 500, 50, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
+    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+                now_pos + Data_cm, now_pos, Data_cm,
+                (unsigned long)Emm_GetTxDropCount());
     now_pos += Data_cm;
 }
 
@@ -34,6 +38,9 @@ void Move_down(float Data_cm)
 {
     Emm_V5_PosUP_Control(5, 1, 500, 50, Data_cm * 10.0f, false, true);
     Emm_V5_Synchronous_motion(0);
+    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+                now_pos - Data_cm, now_pos, -Data_cm,
+                (unsigned long)Emm_GetTxDropCount());
     now_pos -= Data_cm;
 }
 
