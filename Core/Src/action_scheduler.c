@@ -1,0 +1,362 @@
+#include "action_scheduler.h"
+#include "UpperCP.h"
+#include "app.h"
+#include "arms.h"
+#include "bujin.h"
+#include "pca9685.h"
+#include "tof200f.h"
+#include "vofa.h"
+
+#define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
+#define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
+#define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)
+#define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)
+
+/*
+ * 抓取动作状态机说明：
+ * 1. 上位机收到 arm 命令后只调用 ActionScheduler_RequestVisionArm() 投递动作；
+ * 2. StartTask07 每 20ms 调用一次 ActionScheduler_Tick()；
+ * 3. 每个 WAIT 状态只在截止时间到达时执行一次“下一个动作”，然后切换状态；
+ * 4. 因此等待期间 Task07 会立即返回，不会占住串口、导航和 OLED 等其他任务。
+ */
+typedef enum {
+    ACTION_IDLE,
+    /* 无正在执行的抓取/复位动作；允许接收下一条 arm:0~6 命令。 */
+
+    ACTION_GRAB_WAIT_DISTANCE,
+    /* arm:0 已调用 get_dis()；等待 100ms 后读取最新 TofData，并开始开爪。 */
+
+    ACTION_GRAB_WAIT_OPEN,
+    /* 正常抓取已下发通道5=-30度开爪；等待 800ms，避免伸臂时碰撞夹爪。 */
+
+    ACTION_GRAB_WAIT_CLOSE,
+    /* 已按 TofData/10-1cm 下发通道6伸臂角度；等待 100ms 后执行闭爪。 */
+
+    ACTION_GRAB_WAIT_GRIP,
+    /* 已下发通道5=3度闭爪；等待 800ms，确保果实夹紧后才允许转运。 */
+
+    ACTION_PUT_WAIT_LIFT,
+    /* 已升到 10cm 安全高度；等待 100ms 后把通道6收回 -80度。 */
+
+    ACTION_PUT_WAIT_EXTEND,
+    /* 伸缩臂已收回；等待 100ms 后把通道7云台转回 0度中位。 */
+
+    ACTION_PUT_WAIT_ROTATE,
+    /* 云台已回中；等待 500ms 后开爪，避免在转动过程中释放果实。 */
+
+    ACTION_PUT_WAIT_OPEN,
+    /* 已下发开爪；等待 1000ms 让果实离爪，然后通知路线执行下一步。 */
+
+    ACTION_SKIP_WAIT_LIFT,
+    /* arm:5 或对准失败：已升到 5cm 安全高度；等待 500ms 后收臂。 */
+
+    ACTION_SKIP_WAIT_EXTEND,
+    /* 跳过目标时伸缩臂已收回；等待 1000ms 后将云台转回 0度。 */
+
+    ACTION_SKIP_WAIT_ROTATE,
+    /* 跳过目标时云台已回中；等待 200ms 后通知路线跳至下一个任务。 */
+
+    ACTION_BAD_WAIT_DISTANCE,
+    /* arm:6 已触发测距；等待 500ms 后按 TofData/10-2cm 伸臂并闭爪。 */
+
+    ACTION_BAD_WAIT_CLOSE,
+    /* 坏果已夹紧；等待 800ms 后开爪，维持原坏果处理的动作节拍。 */
+
+    ACTION_BAD_WAIT_OPEN
+    /* 坏果夹爪已打开；等待 800ms 后进入通用放置/复位流程。 */
+} ActionState_t;
+
+static ActionState_t s_state;       /* 当前动作阶段 */
+static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基 */
+static uint8_t s_retry_count;       /* 云台到左右极限后的前移次数 */
+
+/* 仅在收到命令或切换动作阶段时输出，避免在 20ms Tick 中连续刷屏。 */
+static const char *ActionScheduler_StateName(ActionState_t state)
+{
+    switch (state) {
+    case ACTION_IDLE:                return "IDLE";
+    case ACTION_GRAB_WAIT_DISTANCE:  return "GRAB_DISTANCE";
+    case ACTION_GRAB_WAIT_OPEN:      return "GRAB_OPEN";
+    case ACTION_GRAB_WAIT_CLOSE:     return "GRAB_CLOSE";
+    case ACTION_GRAB_WAIT_GRIP:      return "GRAB_GRIP";
+    case ACTION_PUT_WAIT_LIFT:       return "PUT_LIFT";
+    case ACTION_PUT_WAIT_EXTEND:     return "PUT_EXTEND";
+    case ACTION_PUT_WAIT_ROTATE:     return "PUT_ROTATE";
+    case ACTION_PUT_WAIT_OPEN:       return "PUT_OPEN";
+    case ACTION_SKIP_WAIT_LIFT:      return "SKIP_LIFT";
+    case ACTION_SKIP_WAIT_EXTEND:    return "SKIP_EXTEND";
+    case ACTION_SKIP_WAIT_ROTATE:    return "SKIP_ROTATE";
+    case ACTION_BAD_WAIT_DISTANCE:   return "BAD_DISTANCE";
+    case ACTION_BAD_WAIT_CLOSE:      return "BAD_CLOSE";
+    case ACTION_BAD_WAIT_OPEN:       return "BAD_OPEN";
+    default:                         return "UNKNOWN";
+    }
+}
+
+static void ActionScheduler_Debug(const char *event, uint8_t command)
+{
+    Vofa_Printf("[ARM_DBG] %s cmd=%u state=%s busy=%u gimbal=%.1f retry=%u updown=%u tof=%.1f\r\n",
+                event,
+                command,
+                ActionScheduler_StateName(s_state),
+                ActionScheduler_IsBusy() ? 1U : 0U,
+                PCA9685_Get180Angle(7U),
+                s_retry_count,
+                upordownFlag,
+                TofData);
+}
+
+static bool ActionScheduler_Expired(void)
+{
+    /* 有符号相减可正确处理 HAL_GetTick() 32 位回绕。 */
+    return ((int32_t)(HAL_GetTick() - s_deadline) >= 0);
+}
+
+static void ActionScheduler_SetDeadline(uint32_t delay_ms)
+{
+    /* 所有动作间隔统一用 HAL 时基描述，绝不能在此调用 osDelay/vTaskDelay。 */
+    s_deadline = HAL_GetTick() + delay_ms;
+}
+
+static void ActionScheduler_SetExtendCm(float distance_cm)
+{
+    /* 通道6角度与伸出距离线性对应：-80度为 0mm，+25度为 300mm。 */
+    float current = PCA9685_Get180Angle(6U);
+    float dist_mm = (current - ARM_EXTEND_MIN_ANGLE_DEG)
+                  / ARM_EXTEND_TOTAL_RANGE_DEG * ARM_EXTEND_TOTAL_RANGE_MM;
+    float target;
+
+    if (dist_mm < 0.0f) {
+        /* 读取值受初始化/浮点误差影响时，不能允许计算出负行程。 */
+        dist_mm = 0.0f;
+    }
+    target = ARM_EXTEND_MIN_ANGLE_DEG
+           + (dist_mm + distance_cm * 10.0f) / ARM_EXTEND_TOTAL_RANGE_MM
+           * ARM_EXTEND_TOTAL_RANGE_DEG;
+    if (target > ARM_EXTEND_MAX_ANGLE_DEG) {
+        /* 目标距离过远时卡在机械最大伸出角，保护机构。 */
+        target = ARM_EXTEND_MAX_ANGLE_DEG;
+    } else if (target < ARM_EXTEND_MIN_ANGLE_DEG) {
+        /* 目标距离为负或过小时卡在完全收回角。 */
+        target = ARM_EXTEND_MIN_ANGLE_DEG;
+    }
+    /* 此处只下发一个目标角，不调用带 osDelay 的 Smooth 接口。 */
+    (void)PCA9685_Set180Angle(6U, target);
+}
+
+static void ActionScheduler_StartPut(ActionState_t first_state)
+{
+    /* 放置共用起点：先升至安全高度，再依次缩臂、回云台、开爪。 */
+    Move_Pos(10.0f);
+    s_state = first_state;
+    ActionScheduler_SetDeadline(100U);
+}
+
+void ActionScheduler_Init(void)
+{
+    /* 初始化不操作硬件，仅清除上一次动作的软件状态。 */
+    s_state = ACTION_IDLE;
+    s_deadline = 0U;
+    s_retry_count = 0U;
+}
+
+bool ActionScheduler_IsBusy(void)
+{
+    /* IDLE 以外均表示存在等待时间或后续机械动作。 */
+    return (s_state != ACTION_IDLE);
+}
+
+void ActionScheduler_Cancel(void)
+{
+    /* 急停只阻止后续状态推进，已下发到舵机的最后位置保持不变。 */
+    s_state = ACTION_IDLE;
+}
+
+void ActionScheduler_RequestVisionArm(uint8_t command)
+{
+    float gimbal_angle;
+
+    ActionScheduler_Debug("RX", command);
+    if (ActionScheduler_IsBusy()) {
+        /* 相机可能连续上报，抓取过程中的新命令不能打断当前序列。 */
+        ActionScheduler_Debug("DROP_BUSY", command);
+        return;
+    }
+
+    gimbal_angle = PCA9685_Get180Angle(7U);
+    if (command == 1U || command == 2U) {
+        /* 1/2 仅做视觉对准；到极限后以底盘前移重新获得视野。 */
+        if ((command == 1U && gimbal_angle <= -90.0f) ||
+            (command == 2U && gimbal_angle >= 90.0f)) {
+            s_retry_count++;
+            ActionScheduler_Debug("GIMBAL_LIMIT", command);
+            if (s_retry_count >= 5U) {
+                /* 连续五次撞到云台极限仍未对准，按 arm:5 流程放弃当前果实。 */
+                if (upordownFlag == 0U) {
+                    Move_Pos(5.0f);
+                    s_state = ACTION_SKIP_WAIT_LIFT;
+                    ActionScheduler_SetDeadline(500U);
+                    ActionScheduler_Debug("GIVEUP_SKIP", command);
+                } else {
+                    ActionScheduler_Debug("GIVEUP_TREE", command);
+                    App_NotifyGrabDone();
+                }
+            } else {
+                /* 云台已到机械极限时，底盘前移 100mm 后等待相机重新反馈。 */
+                Emm_V5_Chassis_Pos_Control(1, 50, 20, 100.0f);
+                ActionScheduler_Debug("CHASSIS_FORWARD", command);
+            }
+        } else {
+            /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
+            (void)PCA9685_Set180AngleSmooth(7U, gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 100, 10);
+            ActionScheduler_Debug("GIMBAL_STEP", command);
+        }
+    } else if (command == 3U) {
+        /* 目标偏上：升降机构上移 1cm；本命令不进入长动作序列。 */
+        Move_up(1.0f);
+    } else if (command == 4U) {
+        /* 目标偏下：升降机构下移 1cm；本命令不进入长动作序列。 */
+        Move_down(1.0f);
+    } else if (command == 0U) {
+        /* 正常抓取：先触发测距，100ms 后读取 TofData 计算伸臂量。 */
+        s_retry_count = 0U;
+        if (upordownFlag != 0U) {
+            /* 树上果当前不执行地面抓取动作，直接让路线继续。 */
+            App_NotifyGrabDone();
+            return;
+        }
+        get_dis();
+        s_state = ACTION_GRAB_WAIT_DISTANCE;
+        ActionScheduler_SetDeadline(100U);
+        ActionScheduler_Debug("GRAB_START", command);
+    } else if (command == 5U) {
+        /* 跳过目标：升至安全高度后收臂、云台回中，再通知路线继续。 */
+        s_retry_count = 0U;
+        if (upordownFlag == 0U) {
+            Move_Pos(5.0f);
+            s_state = ACTION_SKIP_WAIT_LIFT;
+            ActionScheduler_SetDeadline(500U);
+            ActionScheduler_Debug("SKIP_START", command);
+        } else {
+            /* 树上果跳过不需要移动地面升降/伸缩机构。 */
+            App_NotifyGrabDone();
+        }
+    } else if (command == 6U) {
+        /* 坏果清理沿用放置流程，但伸臂距离比正常抓取少 1cm。 */
+        if (upordownFlag != 0U) {
+            /* 树上坏果同样不进入本地地面抓取机构流程。 */
+            App_NotifyGrabDone();
+            return;
+        }
+        get_dis();
+        s_state = ACTION_BAD_WAIT_DISTANCE;
+        ActionScheduler_SetDeadline(500U);
+        ActionScheduler_Debug("BAD_START", command);
+    }
+}
+
+void ActionScheduler_Tick(void)
+{
+    /* 未到本阶段截止时间时不执行 I2C/电机命令，保持 Task07 响应性。 */
+    if (!ActionScheduler_Expired()) {
+        return;
+    }
+
+    switch (s_state) {
+    case ACTION_GRAB_WAIT_DISTANCE:
+        /* 测距稳定后开爪，等待爪子张开。 */
+        (void)PCA9685_Set180Angle(5U, -30.0f);
+        s_state = ACTION_GRAB_WAIT_OPEN;
+        ActionScheduler_SetDeadline(800U);
+        ActionScheduler_Debug("GRAB_OPEN", 0U);
+        break;
+    case ACTION_GRAB_WAIT_OPEN:
+        /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
+        ActionScheduler_SetExtendCm(TofData / 10.0f - 1.0f);
+        s_state = ACTION_GRAB_WAIT_CLOSE;
+        ActionScheduler_SetDeadline(100U);
+        ActionScheduler_Debug("GRAB_EXTEND", 0U);
+        break;
+    case ACTION_GRAB_WAIT_CLOSE:
+        /* 到达目标距离后夹紧，保留原流程的抓稳时间。 */
+        (void)PCA9685_Set180Angle(5U, 3.0f);
+        s_state = ACTION_GRAB_WAIT_GRIP;
+        ActionScheduler_SetDeadline(800U);
+        ActionScheduler_Debug("GRAB_CLOSE", 0U);
+        break;
+    case ACTION_GRAB_WAIT_GRIP:
+        /* 果实已夹紧，进入所有抓取/坏果处理共用的放置复位子流程。 */
+        ActionScheduler_StartPut(ACTION_PUT_WAIT_LIFT);
+        ActionScheduler_Debug("PUT_START", 0U);
+        break;
+    case ACTION_PUT_WAIT_LIFT:
+        /* 已抬升到位，开始收回伸缩臂。 */
+        (void)PCA9685_Set180Angle(6U, -80.0f);
+        s_state = ACTION_PUT_WAIT_EXTEND;
+        ActionScheduler_SetDeadline(100U);
+        ActionScheduler_Debug("PUT_RETRACT", 0U);
+        break;
+    case ACTION_PUT_WAIT_EXTEND:
+        /* 缩臂后将云台回到中位。 */
+        (void)PCA9685_Set180Angle(7U, 0.0f);
+        s_state = ACTION_PUT_WAIT_ROTATE;
+        ActionScheduler_SetDeadline(500U);
+        ActionScheduler_Debug("PUT_CENTER", 0U);
+        break;
+    case ACTION_PUT_WAIT_ROTATE:
+        /* 云台回中后开爪释放果实。 */
+        (void)PCA9685_Set180Angle(5U, -30.0f);
+        s_state = ACTION_PUT_WAIT_OPEN;
+        ActionScheduler_SetDeadline(1000U);
+        ActionScheduler_Debug("PUT_RELEASE", 0U);
+        break;
+    case ACTION_PUT_WAIT_OPEN:
+        /* 完整抓取/放置结束，通知路线状态机发送下一次任务。 */
+        s_state = ACTION_IDLE;
+        ActionScheduler_Debug("DONE", 0U);
+        App_NotifyGrabDone();
+        break;
+    case ACTION_SKIP_WAIT_LIFT:
+        /* 跳过目标时不需要开闭爪，直接收臂。 */
+        (void)PCA9685_Set180Angle(6U, -80.0f);
+        s_state = ACTION_SKIP_WAIT_EXTEND;
+        ActionScheduler_SetDeadline(1000U);
+        ActionScheduler_Debug("SKIP_RETRACT", 5U);
+        break;
+    case ACTION_SKIP_WAIT_EXTEND:
+        /* 收臂完成后再回云台，避免两机构在狭小空间同时摆动。 */
+        (void)PCA9685_Set180Angle(7U, 0.0f);
+        s_state = ACTION_SKIP_WAIT_ROTATE;
+        ActionScheduler_SetDeadline(200U);
+        ActionScheduler_Debug("SKIP_CENTER", 5U);
+        break;
+    case ACTION_SKIP_WAIT_ROTATE:
+        /* 跳过动作完整结束；路线状态机的 s_grab_done 将被置位。 */
+        s_state = ACTION_IDLE;
+        ActionScheduler_Debug("SKIP_DONE", 5U);
+        App_NotifyGrabDone();
+        break;
+    case ACTION_BAD_WAIT_DISTANCE:
+        /* 坏果与正常果的差别是目标伸臂量少 1cm，后续均复用放置流程。 */
+        ActionScheduler_SetExtendCm(TofData / 10.0f - 2.0f);
+        (void)PCA9685_Set180Angle(5U, 3.0f);
+        s_state = ACTION_BAD_WAIT_CLOSE;
+        ActionScheduler_SetDeadline(800U);
+        ActionScheduler_Debug("BAD_GRIP", 6U);
+        break;
+    case ACTION_BAD_WAIT_CLOSE:
+        /* 坏果夹紧保持一段时间后开爪，执行原有清理节拍。 */
+        (void)PCA9685_Set180Angle(5U, -30.0f);
+        s_state = ACTION_BAD_WAIT_OPEN;
+        ActionScheduler_SetDeadline(800U);
+        ActionScheduler_Debug("BAD_RELEASE", 6U);
+        break;
+    case ACTION_BAD_WAIT_OPEN:
+        /* 开爪等待结束后抬升，并转入通用收臂、回中、开爪流程。 */
+        ActionScheduler_StartPut(ACTION_PUT_WAIT_LIFT);
+        ActionScheduler_Debug("BAD_PUT", 6U);
+        break;
+    default:
+        break;
+    }
+}

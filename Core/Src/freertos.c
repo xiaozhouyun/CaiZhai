@@ -42,6 +42,7 @@
 #include "vofa.h"
 #include "tiancan.h"
 #include "arms.h"
+#include "action_scheduler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -151,7 +152,9 @@ void vApplicationTickHook(void);
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  /* 仅复位软件状态；此时调度器和外设任务均尚未开始运行。 */
+  App_Init();
+  ActionScheduler_Init();
   /* USER CODE END Init */
   /* Create the mutex(es) */
   /* creation of usart2TX */
@@ -313,7 +316,7 @@ void StartTask03(void *argument)
 /**
 * @brief Function implementing the myTask04 thread.
 *        优先级: osPriorityBelowNormal6 (低于正常优先级 6)
-*        功能: 主应用 App 模式与应用逻辑调度任务
+*        功能: 保留任务（应用逻辑已迁移到 StartTask07）
 * @param argument: Not used
 * @retval None
 */
@@ -325,18 +328,9 @@ void StartTask04(void *argument)
        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   
   /* Infinite loop */
-  App_Init();
-  /* 调度器已运行：在任务上下文下发送一次底盘停止帧。 */
-
-    // PCA9685_Set180Angle(1U,-80.0f);
-
   for(;;)
   {
-        
-        /* App chain: read current app mode and execute one scheduling step. */
-        App_RunCurrentMode();
-      
-    osDelay(100);
+    osDelay(1000);
   }
   /* USER CODE END StartTask04 */
 }
@@ -390,7 +384,7 @@ void StartTask06(void *argument)
 /**
 * @brief Function implementing the myTask07 thread.
 *        优先级: osPriorityNormal1 (高于正常优先级 1)
-*        功能: 高优先级后台保留任务 / 空闲延时任务
+*        功能: 路线、抓取与云台非阻塞状态机（20ms Tick）
 * @param argument: Not used
 * @retval None
 */
@@ -398,10 +392,12 @@ void StartTask06(void *argument)
 void StartTask07(void *argument)
 {
   /* USER CODE BEGIN StartTask07 */
-  /* Infinite loop */
   for(;;)
   {
-    osDelay(1000);
+    /* 两个状态机均为单步推进；20ms 是动作时间基准，不得在其中阻塞。 */
+    App_RunCurrentMode();
+    ActionScheduler_Tick();
+    osDelay(20);
   }
   /* USER CODE END StartTask07 */
 }

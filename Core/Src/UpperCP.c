@@ -11,6 +11,7 @@
 #include "bujin.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "action_scheduler.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -181,7 +182,6 @@ uint8_t PosFlag = 1;
 float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
 uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
-static uint8_t s_retry_count = 0;  /**< 云台极限重试计数器 */
 
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
 uint8_t fruits[8] = {4,3,1,10,8,9,2,11};
@@ -326,143 +326,13 @@ void Arm_func(void)
         for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
             sscanf(p_num, "%d", &temp_num);
         }
-        /* 云台角度只读一次，temp_num 1/2 共用 */
-        float gimbal_angle = PCA9685_Get180Angle(7U);
-        
-        if(temp_num == 1)       //目标偏右
-        {
-            if (gimbal_angle <= -90.0f)   // 云台到右极限：大步前移
-            {
-                s_retry_count++;
-                if (s_retry_count >= 5)
-                {
-                    /* 放弃：同 arm:5 清理流程 */
-                    if (upordownFlag == 0)
-                    {
-                        Move_Pos(5.0f);
-                        vTaskDelay(pdMS_TO_TICKS(500U));
-                        Arm_ExtendZero();
-                        vTaskDelay(pdMS_TO_TICKS(1000U));
-                        Arm_SetRotateAngle(0.0f);
-                        vTaskDelay(pdMS_TO_TICKS(200U));
-                    }
-                    App_NotifyGrabDone();
-                    return;
-                }
-                Emm_V5_Chassis_Pos_Control(1, 50, 20, 100.0f);  // 前进 50mm
-            }
-            else
-            {
-                PCA9685_Set180Angle(7U, gimbal_angle - 1.0f);   // 云台右微调 +1°
-            }
-            osDelay(pdMS_TO_TICKS(500U));
-        }else
-        if(temp_num == 2)       //目标偏左
-        {
-            if (gimbal_angle >= 90.0f)  // 云台到左极限：大步前移
-            {
-                s_retry_count++;
-                if (s_retry_count >= 5)
-                {
-                    /* 放弃：同 arm:5 清理流程 */
-                    if (upordownFlag == 0)
-                    {
-                        Move_Pos(5.0f);
-                        vTaskDelay(pdMS_TO_TICKS(500U));
-                        Arm_ExtendZero();
-                        vTaskDelay(pdMS_TO_TICKS(1000U));
-                        Arm_SetRotateAngle(0.0f);
-                        vTaskDelay(pdMS_TO_TICKS(200U));
-                    }
-                    App_NotifyGrabDone();
-                    return;
-                }
-                Emm_V5_Chassis_Pos_Control(1, 50, 20, 100.0f);  // 前进 50mm
-            }
-            else
-            {
-                PCA9685_Set180Angle(7U, gimbal_angle + 1.0f);   // 云台左微调 -1°
-            }
-            osDelay(pdMS_TO_TICKS(500U));
-        }else
-		if(temp_num == 3)		//目标偏上
-		{
-			Move_up(1);
-            osDelay(pdMS_TO_TICKS(500U));
-		}else
-		if(temp_num == 4)		//目标偏下
-		{
-			Move_down(1);
-            osDelay(pdMS_TO_TICKS(500U));
-		}else
-		if(temp_num == 0)		//对准目标抓取
-		{
-			s_retry_count = 0;
-			if(upordownFlag == 0)	//抓地上
-			{
-				get_dis();
-				vTaskDelay(pdMS_TO_TICKS(100U));
-				/* extend_cm 内部会拆成 100 步平滑执行。 */
-				float dis_diff_temp = TofData / 10.0f - 1.0f;
-                ZhuaZi_open();		//爪子张开
-                vTaskDelay(pdMS_TO_TICKS(800U));
-				extend_cm(dis_diff_temp);//机械臂前移
-	//			Serial5_Printf("Dis_diff=%.2f",dis_diff_temp);
-             	vTaskDelay(pdMS_TO_TICKS(100U));
-				ZhuaZi_close();		//爪子夹住
-				vTaskDelay(pdMS_TO_TICKS(800U));
-				Arm_put();			//放置果子
-				App_NotifyGrabDone();//释放任务四 继续下一个点
-			}
-			if(upordownFlag == 1)	//抓树上
-			{
-				App_NotifyGrabDone();
-			}
-		} else if (temp_num == 5) //视觉系统判断当前水果不值得抓，机械臂复位并跳过
-//视觉系统判断当前这个水果不值得抓（比如误识别、已被采摘、角度太偏无法抓取），就发 arm:5 指令让机械臂复位跳过，
-		{
-			s_retry_count = 0;
-			if(upordownFlag == 0)
-			{   Move_Pos(5.0f);
-                vTaskDelay(pdMS_TO_TICKS(500U));
-                Arm_ExtendZero();//伸缩归零
-                vTaskDelay(pdMS_TO_TICKS(1000U));
-				Arm_SetRotateAngle(0.0f);
-                	vTaskDelay(pdMS_TO_TICKS(200U));
-			App_NotifyGrabDone();
-			}
-			if(upordownFlag == 1)
-			{
-				// Arm_SetRotateAngle(0.0f);
-//				vTaskDelay(500);
-			App_NotifyGrabDone();
-			}
-		} else if (temp_num == 6)	//移除坏果
-		{	
-			if(upordownFlag == 0)	//抓地上
-			{
-				get_dis();
-				vTaskDelay(pdMS_TO_TICKS(500U));
-				/* extend_cm 内部会拆成 100 步平滑执行。 */
-				float dis_diff_temp = TofData / 10.0f - 2.0f;
-				extend_cm(dis_diff_temp);//机械臂前移
-				ZhuaZi_close();		//爪子夹住
-				vTaskDelay(pdMS_TO_TICKS(800U));
-				// PosFlag == 0U ? Arm_SetRotateAngle(Rotate_Angle_Real + 30.0f) :
-				//                  Arm_SetRotateAngle(Rotate_Angle_Real - 30.0f);
-				vTaskDelay(pdMS_TO_TICKS(800U));
-				ZhuaZi_open();
-				vTaskDelay(pdMS_TO_TICKS(800U));
-				Arm_put();
-				vTaskDelay(pdMS_TO_TICKS(500U));
-				App_NotifyGrabDone();
-			}
-			if(upordownFlag == 1)	//抓树上
-			{
-				// Arm_SetRotateAngle(0.0f);
-				App_NotifyGrabDone();
-			}
-		}
+        /* 串口任务只负责解析；耗时动作统一由 StartTask07 的状态机执行。 */
+        if ((temp_num >= 0) && (temp_num <= 6)) {
+            Vofa_Printf("[ARM_RX] arm=%d -> ActionScheduler\r\n", temp_num);
+            ActionScheduler_RequestVisionArm((uint8_t)temp_num);
+        } else {
+            Vofa_Printf("[ARM_RX] invalid arm=%d\r\n", temp_num);
+        }
     }
 }
 

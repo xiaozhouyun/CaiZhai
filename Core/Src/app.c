@@ -1,15 +1,14 @@
 #include "app.h"
-#include "cmsis_os.h"
+#include "main.h"
 #include "arms.h"
 #include "tiancan.h"
 #include "navigation.h"
-#include "FreeRTOS.h"
-#include "task.h"
 #include "usart.h"
 #include "bujin.h"
 #include "voice.h"
 #include "pca9685.h"
 #include "UpperCP.h"
+#include "action_scheduler.h"
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -28,9 +27,60 @@ volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 static volatile bool s_app_running;
 static volatile bool s_stop_requested;
-static osThreadId_t s_caizhai_tast_id;
+static volatile bool s_grab_done;      /* 视觉动作机完成一次处理后置位 */
+static const AppWaypoint_t *s_route;   /* 当前执行路线；A 指向常量，C 指向下方静态副本 */
+static AppWaypoint_t s_dynamic_route[12]; /* C 区规划结果，不能使用函数栈数组 */
+static uint8_t s_route_len;
+static uint8_t s_route_index;
+static AppMode_t s_route_next_mode;
+static uint32_t s_route_deadline;
 
-#define APP_EVENT_GRAB_DONE    (1U << 0)
+/* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
+typedef enum {
+    APP_ROUTE_IDLE,
+    /* 当前没有已启动路线；App_RunCurrentMode 会根据 g_app_mode 启动 A 或 C。 */
+
+    APP_ROUTE_WAIT_NAVIGATION,
+    /* 已向 Navigation_Request 下发当前航点，等待 Navigation_IsIdle() 到点。 */
+
+    APP_ROUTE_FIRST_WAIT_LIFT,
+    /* 作业点第一视野：已抬升到 8cm，等待 500ms 后向 +90度转云台。 */
+
+    APP_ROUTE_FIRST_WAIT_GIMBAL,
+    /* 云台已转至 +90度，等待 1500ms 给舵机完整转动时间。 */
+
+    APP_ROUTE_FIRST_WAIT_LOWER,
+    /* 已降回 0cm，等待 500ms 后向上位机发送第一次 send 任务。 */
+
+    APP_ROUTE_WAIT_GRAB_FIRST,
+    /* 第一次 send 已发出；等待 ActionScheduler 调用 App_NotifyGrabDone()。 */
+
+    APP_ROUTE_SECOND_WAIT_LIFT,
+    /* 第一次视野完成：已再次抬升到 8cm，等待转向 -90度。 */
+
+    APP_ROUTE_SECOND_WAIT_GIMBAL,
+    /* 云台已转至 -90度，等待 1500ms 给舵机完整转动时间。 */
+
+    APP_ROUTE_SECOND_WAIT_LOWER,
+    /* 已降回 0cm，等待 500ms 后发送第二次 send 任务。 */
+
+    APP_ROUTE_WAIT_GRAB_SECOND
+    /* 第二次 send 已发出；完成后航点索引加一并请求下一个航点。 */
+} AppRouteState_t;
+
+static AppRouteState_t s_route_state;
+
+static bool App_RouteDelayExpired(void)
+{
+    /* 使用有符号差值，避免毫秒计数器回绕时误判。 */
+    return ((int32_t)(HAL_GetTick() - s_route_deadline) >= 0);
+}
+
+static void App_RouteSetDelay(uint32_t delay_ms)
+{
+    /* 此函数只记录“下一步最早执行时刻”，不会阻塞当前任务。 */
+    s_route_deadline = HAL_GetTick() + delay_ms;
+}
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
@@ -59,18 +109,22 @@ static const AppWaypoint_t k_route_c[] = {
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
-static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
-                         AppMode_t next_mode);
-static bool App_WaitGrabDone(void);
+static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
+                           AppMode_t next_mode);
+static void App_RouteTick(void);
 
 /**
  * @brief 初始化应用层状态
  */
 void App_Init(void)
 {
+    /* 所有路线/抓取状态均从空闲开始，防止上次运行残留的完成标志误触发。 */
     g_app_mode = APP_MODE_IDLE;
     s_app_running = false;
     s_stop_requested = false;
+    s_grab_done = false;
+    s_route = NULL;
+    s_route_state = APP_ROUTE_IDLE;
 }
 
 /**
@@ -95,18 +149,22 @@ bool App_IsRunning(void)
  */
 void vofaRxbyte(uint8_t data)
 {
+    /* 天蚕协议始终先处理；本函数额外识别本项目的单字符启停命令。 */
     Tiancan_RxByte(data);
 
     if (data == 'a' || data == 'A') {
+        /* A 区路线从 Task07 的下一次 Tick 开始，不在 USART6 中断中执行。 */
         s_app_running = true;
         s_stop_requested = false;
         App_SetMode(APP_MODE_ROUTE_A);
     } else if (data == 't' || data == 'T') {
+        /* 这里只置急停请求；真正停止动作由 Task07 串行执行，避免中断内操作外设。 */
         s_app_running = false;
         s_stop_requested = true;
         App_SetMode(APP_MODE_IDLE);
     }
     else if (data == 's' || data == 'S') {
+        /* 保留原测试入口：下一次 Task07 Tick 将云台置为测试角度后回到空闲。 */
         s_app_running = 1;
         s_stop_requested = 0;
         App_SetMode(APP_MODE_TEST);
@@ -118,38 +176,27 @@ void vofaRxbyte(uint8_t data)
  */
 void App_RunCurrentMode(void)
 {
-        if (s_stop_requested) {
-            s_stop_requested = false;
-            Navigation_Stop();
-            return;
-        }
+    if (s_stop_requested) {
+        /* 急停优先：停止路线推进并取消未完成抓取序列。 */
+        s_stop_requested = false;
+        s_route_state = APP_ROUTE_IDLE;
+        s_route = NULL;
+        ActionScheduler_Cancel();
+        Navigation_Stop();
+        return;
+    }
 
-  
-     switch (g_app_mode) {
+    if (s_route_state != APP_ROUTE_IDLE) {
+        /* 已启动路线后不重复进入模式分支，只推进当前路线一步。 */
+        App_RouteTick();
+        return;
+    }
+
+    switch (g_app_mode) {
         case APP_MODE_TEST:
-            /* Test mode: currently does nothing, but can be used for debugging or custom tests. */
-//            osDelay(500U);
-//            PCA9685_Set180AngleSmooth(7U, 20.0f, 100U, 10U);
-//             osDelay(1000U);
-//         PCA9685_Set180AngleSmooth(7U, 0.0f, 100U, 10U);
-//         PCA9685_Set180AngleSmooth(1U, 20.0f, 500U, 10U);
-        //     PCA9685_Set180AngleSmooth(7U,0.0f, 100U, 10U);
-
-        //      osDelay(1000U);
-//           PCA9685_Set180AngleSmooth(6U,25.0f, 100U, 10U);
-//         extend_cm(20.0f);
-//        Chassis_SetSpeed(500.0f, 0.0f);
-//            Move_down(5.0f);
-//          PCA9685_Set180AngleSmooth(7U, 80, 200U, 10U);
-//          PCA9685_Set270AngleSmooth(0.0f, 100U, 20U);
-//          (void)PCA9685_Set180AngleSmooth(5U, -80.0f, 100U, 10U);
-//        ZhuaZi_open();		//爪子张开
-  PCA9685_Set180AngleSmooth(7U, -90, 150U, 10U);
-        // ZhuaZi_close();
-           osDelay(2000U);
-//            Chassis_SetSpeed(0.0f, 0.0f);
+            /* 单次测试动作，不使用原先的平滑阻塞接口。 */
+            (void)PCA9685_Set180Angle(7U, -90.0f);
             App_SetMode(APP_MODE_IDLE);
-
             break;
 
         case APP_MODE_IDLE:
@@ -158,9 +205,9 @@ void App_RunCurrentMode(void)
             break;
 
         case APP_MODE_ROUTE_A:
+            /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
             Voice_Num(17);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            App_RunRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
+            App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
             break;
 
         case APP_MODE_ROUTE_B:
@@ -168,11 +215,7 @@ void App_RunCurrentMode(void)
             break;
 
         case APP_MODE_ROUTE_C:
-            /*
-             * Preserve the current behavior: route C leaves the app in route C
-             * after completion, so the scheduler can enter it again.
-             */
-            // App_RunRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_IDLE);
+            /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
             App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_IDLE);
             break;
 
@@ -188,90 +231,131 @@ void App_RunCurrentMode(void)
  * @param route_len 航点数组长度
  * @param next_mode 执行完成后的下一个应用模式
  */
-static void App_RunRoute(const AppWaypoint_t *route, uint8_t route_len,
-                         AppMode_t next_mode)
+static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
+                           AppMode_t next_mode)
 {
-    uint8_t i;
-
-    /* 逐个航点遍历，确保系统仍处于运行状态 */
-    for (i = 0U; i < route_len && App_IsRunning(); i++) {
-        /* 请求导航到当前航点坐标 */
-        (void)Navigation_Request(route[i].x_mm, route[i].y_mm, route[i].yaw_rad);
-
-        /* 1. 等待导航模块到达目标点（底盘运动中，舵机保持不动） */
-        while (!Navigation_IsIdle() && App_IsRunning()) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-
-        /* 2. 到达目标点且底盘停稳后，只有当该航点配置了 has_action == true 时才执行舵机动作 */
-        if (App_IsRunning() && route[i].has_action) {
-               Move_Pos(8.0f);
-                 osDelay(500U);
-            PCA9685_Set180AngleSmooth(7U, 90, 150U, 10U);
-             Move_Pos(0.0f);
-              
-            osDelay(500U);
-          
-            s_caizhai_tast_id = osThreadGetId();
-            (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
-            UpperCP_SendTask("send");
-              osDelay(500U);
-            if (!App_WaitGrabDone()) {
-                Navigation_Stop();
-                return;
-            }
-           
-            //回零
-             Move_Pos(8.0f);
-                 osDelay(500U);
-             PCA9685_Set180AngleSmooth(7U, -90, 150U, 10U);
-                  Move_Pos(0.0f);
-     
-            osDelay(500U);
-            (void)osThreadFlagsClear(APP_EVENT_GRAB_DONE);
-            UpperCP_SendTask("send");
-              osDelay(500U);
-            if (!App_WaitGrabDone()) {
-                Navigation_Stop();
-                return;
-            }
-        }
+    if (route == NULL || route_len == 0U) {
+        return;
     }
+    /* 仅记录路线并请求首航点；到点检测交给后续 App_RouteTick。 */
+    s_route = route;
+    s_route_len = route_len;
+    s_route_index = 0U;
+    s_route_next_mode = next_mode;
+    s_route_state = APP_ROUTE_WAIT_NAVIGATION;
+    (void)Navigation_Request(s_route[0].x_mm, s_route[0].y_mm, s_route[0].yaw_rad);
+}
 
-    /* 如果中途被停止，直接退出 */
-    if (!App_IsRunning()) {
+static void App_RouteTick(void)
+{
+    if (!App_IsRunning() || s_route == NULL) {
+        /* 外部停止或非法路线指针时，停止导航并退出路线状态机。 */
+        s_route_state = APP_ROUTE_IDLE;
+        Navigation_Stop();
         return;
     }
 
-    /* 如果下一步是空闲模式，重置运行状态并停止底盘 */
-    if (next_mode == APP_MODE_IDLE) {
+    if (s_route_state == APP_ROUTE_WAIT_NAVIGATION) {
+        /* 底盘未到点时本函数立即返回，导航任务仍以 10ms 独立运行。 */
+        if (!Navigation_IsIdle()) {
+            return;
+        }
+        if (!s_route[s_route_index].has_action) {
+            /* 普通航点不需要视觉作业：到点后直接请求下一个航点。 */
+            s_route_index++;
+        } else {
+            /* 作业点固定执行“抬升→转向→下降→两次视觉任务”。 */
+            Move_Pos(8.0f);
+            s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
+            App_RouteSetDelay(500U);
+            return;
+        }
+    } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LIFT) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        (void)PCA9685_Set180Angle(7U, 90.0f);
+        s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
+        App_RouteSetDelay(1500U);
+        return;
+    } else if (s_route_state == APP_ROUTE_FIRST_WAIT_GIMBAL) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        Move_Pos(0.0f);
+        s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
+        App_RouteSetDelay(500U);
+        return;
+    } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LOWER) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        s_grab_done = false;
+        UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
+        s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
+        return;
+    } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
+        if (!s_grab_done) {
+            return;
+        }
+        Move_Pos(8.0f);
+        s_route_state = APP_ROUTE_SECOND_WAIT_LIFT;
+        App_RouteSetDelay(500U);
+        return;
+    } else if (s_route_state == APP_ROUTE_SECOND_WAIT_LIFT) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        (void)PCA9685_Set180Angle(7U, -90.0f);
+        s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
+        App_RouteSetDelay(1500U);
+        return;
+    } else if (s_route_state == APP_ROUTE_SECOND_WAIT_GIMBAL) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        Move_Pos(0.0f);
+        s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
+        App_RouteSetDelay(500U);
+        return;
+    } else if (s_route_state == APP_ROUTE_SECOND_WAIT_LOWER) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        s_grab_done = false;
+        UpperCP_SendTask("send"); /* 请求相机完成反向云台视野内的果实处理 */
+        s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
+        return;
+    } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
+        if (!s_grab_done) {
+            return;
+        }
+        s_route_index++;
+        s_route_state = APP_ROUTE_WAIT_NAVIGATION;
+    }
+
+    if (s_route_index < s_route_len) {
+        /* 本航点已完成，向导航任务请求下一航点；到点结果由下一轮 Tick 检查。 */
+        (void)Navigation_Request(s_route[s_route_index].x_mm,
+                                 s_route[s_route_index].y_mm,
+                                 s_route[s_route_index].yaw_rad);
+        return;
+    }
+
+    s_route_state = APP_ROUTE_IDLE;
+    s_route = NULL;
+    if (s_route_next_mode == APP_MODE_IDLE) {
+        /* 全部路线结束且不再切换下一段时，明确关闭运行标志并停止底盘。 */
         s_app_running = false;
         Navigation_Stop();
     }
-
-    /* 切换到下一个运行模式 */
-    App_SetMode(next_mode);
-}
-
-static bool App_WaitGrabDone(void)
-{
-    uint32_t flags;
-
-    while (App_IsRunning() && !s_stop_requested) {
-        flags = osThreadFlagsWait(APP_EVENT_GRAB_DONE, osFlagsWaitAny, 50U);
-        if ((flags & APP_EVENT_GRAB_DONE) != 0U) {
-            return true;
-        }
-    }
-
-    return false;
+    App_SetMode(s_route_next_mode);
 }
 
 void App_NotifyGrabDone(void)
 {
-    if (s_caizhai_tast_id != NULL) {
-        (void)osThreadFlagsSet(s_caizhai_tast_id, APP_EVENT_GRAB_DONE);
-    }
+    /* 由 ActionScheduler 在动作结束时调用；这里只置位，不能做阻塞操作。 */
+    s_grab_done = true;
 }
 
 /**
@@ -300,7 +384,7 @@ void App_NotifyGrabDone(void)
  *          4. 自动选取总步数最少的绕行方向（路程最短）。
  *          5. 沿途生成航点队列，目标节点置 `has_action = true`（到点停稳后触发舵机作业），
  *             过路节点置 `has_action = false`（只经过不停留/不动舵机）。
- *          6. 调用 `App_RunRoute` 驱动小车高效完成多目标任务。
+ *          6. 启动非阻塞航线调度器完成多目标任务。
  * 
  * @param  start_node_idx 起始节点编号 (0 ~ 11)
  * @param  target_nodes   待访问的目标节点编号数组
@@ -377,7 +461,6 @@ int32_t App_RouteC_PlanAndRun(uint8_t start_node_idx, const uint8_t *target_node
     }
 
     /* --- 步骤 5: 优化路径 —— 剔除直线上无动作的冗余中间点，严格保留作业点与四大拐角枢纽点 (0, 5, 6, 11) --- */
-    AppWaypoint_t dynamic_route[12];
     uint8_t out_len = 0U;
 
     for (i = 0U; i < best_steps; i++) {
@@ -400,13 +483,13 @@ int32_t App_RouteC_PlanAndRun(uint8_t start_node_idx, const uint8_t *target_node
         bool is_corner_node = (node_idx == 0U || node_idx == 5U || node_idx == 6U || node_idx == 11U);
 
         if (curr_pt.has_action || (i == best_steps - 1U) || is_corner_node) {
-            dynamic_route[out_len++] = curr_pt;
+            s_dynamic_route[out_len++] = curr_pt;
         }
         /* 属于直线上无动作的冗余中间节点（如 1,3,8 等），直接剔除，大直线高速通畅行驶 */
     }
 
     /* --- 步骤 6: 下发给底层导航，沿赛道外围一路畅通执行 --- */
-    App_RunRoute(dynamic_route, out_len, next_mode);
+    App_StartRoute(s_dynamic_route, out_len, next_mode);
 
     return 0;
 }
