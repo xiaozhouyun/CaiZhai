@@ -195,7 +195,7 @@ void App_RunCurrentMode(void)
     switch (g_app_mode) {
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
-            (void)PCA9685_Set180Angle(7U, -90.0f);
+            ActionScheduler_StartGimbalMove(-90.0f, 1500U);
             App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -274,7 +274,8 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        (void)PCA9685_Set180Angle(7U, 90.0f);
+        /* 在 1500ms 内由 Task07 线性插补到正向视野，不能直接跳到 +90度。 */
+        ActionScheduler_StartGimbalMove(90.0f, 1500U);
         s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
         App_RouteSetDelay(1500U);
         return;
@@ -306,7 +307,8 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        (void)PCA9685_Set180Angle(7U, -90.0f);
+        /* 在 1500ms 内由 Task07 线性插补到反向视野，不能直接跳到 -90度。 */
+        ActionScheduler_StartGimbalMove(-90.0f, 1500U);
         s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
         App_RouteSetDelay(1500U);
         return;

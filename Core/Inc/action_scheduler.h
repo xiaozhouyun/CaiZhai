@@ -10,6 +10,8 @@ void ActionScheduler_Init(void);
 void ActionScheduler_RequestVisionArm(uint8_t command);
 /** @brief 推进一次状态机；由 StartTask07 每 20ms 调用，函数内禁止延时。 */
 void ActionScheduler_Tick(void);
+/** @brief 启动通道7云台的非阻塞匀速转动；实际插补由 ActionScheduler_Tick 完成。 */
+void ActionScheduler_StartGimbalMove(float target_angle_deg, uint32_t duration_ms);
 /** @brief 取消尚未完成的动作序列；不主动改变当前已下发的舵机位置。 */
 void ActionScheduler_Cancel(void);
 /** @brief 查询是否有等待中的抓取、复位或坏果清理序列。 */

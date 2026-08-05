@@ -123,6 +123,12 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
+  /* UART5 使用循环 DMA 接收 K230/上位机命令；未启动 DMA 时 arm:x; 不会进入 UpperCP_RX。 */
+  UpperCP_UartDmaStart();
+  Vofa_Printf("[BOOT] UART5 RX DMA %s, err=%lu\r\n",
+              (UpperCP_GetUartErrorCount() == 0U) ? "ON" : "FAIL",
+              (unsigned long)UpperCP_GetUartErrorCount());
+
   /* ================= 1. 舵机驱动初始化 (PCA9685) ================= */
   if (PCA9685_Init() != 0)
   {
