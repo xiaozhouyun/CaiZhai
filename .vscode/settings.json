@@ -5,7 +5,7 @@
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 0,
     "python.analysis.extraPaths": [
-        "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_stubs\\60b6b51d0a97c143a757462360cd80a149d77747"
+        "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_stubs\\ccb5ce5bc04880294c1235494fe9ce4a4cde6a13"
     ],
     "python.analysis.stubPath": "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_pylance\\62d71e2cbfd32389\\typings",
     "python.analysis.diagnosticSeverityOverrides": {

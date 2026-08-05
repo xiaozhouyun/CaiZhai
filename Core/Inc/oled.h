@@ -20,6 +20,7 @@ void OLED_Fill(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t dot);
 void OLED_ShowChar(uint8_t x, uint8_t y, uint8_t chr, uint8_t Char_Size);
 void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t size2, uint8_t point);
 void OLED_ShowString(uint8_t x, uint8_t y, char *p, uint8_t Char_Size);
+void oled_print(uint8_t x, uint8_t y, uint8_t Char_Size, const char *format, ...);
 void OLED_Set_Pos(uint8_t x, uint8_t y);
 void OLED_ShowCHinese(uint8_t x, uint8_t y, uint8_t no);
 void OLED_DrawBMP(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, const uint8_t BMP[]);

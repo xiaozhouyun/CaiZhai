@@ -297,18 +297,22 @@ static void App_RouteTick(void)
         UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
+    // } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
+    //     if (!s_grab_done) {
+    //         return;
+    //     }
+    //     Move_Pos(10.0f);
+    //     s_route_state = APP_ROUTE_SECOND_WAIT_LIFT;
+    //     App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
+    //     return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
-        if (!s_grab_done) {
+         if (!s_grab_done) {
             return;
         }
-        Move_Pos(10.0f);
-        s_route_state = APP_ROUTE_SECOND_WAIT_LIFT;
-        App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
-        return;
-    } else if (s_route_state == APP_ROUTE_SECOND_WAIT_LIFT) {
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
+       
         /* 在 1500ms 内由 Task07 线性插补到反向视野，不能直接跳到 -90度。 */
         ActionScheduler_StartGimbalMove(-90.0f, 1500U);
         s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;

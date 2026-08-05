@@ -224,7 +224,7 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
       osDelay(100);
-     Navigation_Stop();
+      Navigation_Stop();
   /* Infinite loop */
   for(;;){
       
@@ -257,14 +257,17 @@ void StartTask02(void *argument)
     if ((OLED_IsReady() != 0U) && ((HAL_GetTick() - oled_last_refresh) >= 500U))
     {
       oled_last_refresh = HAL_GetTick();
-      OLED_ShowString(40, 0, "        ", 16);
-      OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
-      OLED_ShowString(40, 2, "        ", 16);
-      OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
-      OLED_ShowString(24, 4, "        ", 16);
-      OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
-      OLED_ShowString(24, 6, "        ", 16);
-      OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+      // OLED_ShowString(40, 0, "        ", 16);
+      // OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
+      // OLED_ShowString(40, 2, "        ", 16);
+      // OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
+      // OLED_ShowString(24, 4, "        ", 16);
+      // OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
+      // OLED_ShowString(24, 6, "        ", 16);
+      // OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
+      oled_print(0, 0, 16, "X=%.2f", g_robot_pos.x);
+      oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
+      oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
     }
 
     // vofa_values[0] = g_robot_pos.x / 10.0f;

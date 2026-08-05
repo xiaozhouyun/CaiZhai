@@ -1,5 +1,9 @@
 #include "oled.h"
 #include "oled_font.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+#define OLED_PRINT_BUFFER_SIZE 64U
 
 static uint8_t OLED_GRAM[128][8];
 static uint8_t oled_ready;
@@ -345,6 +349,30 @@ void OLED_ShowString(uint8_t x, uint8_t y, char *chr, uint8_t Char_Size)
         }
         j++;
     }
+}
+
+void oled_print(uint8_t x, uint8_t y, uint8_t Char_Size, const char *format, ...)
+{
+    char buffer[OLED_PRINT_BUFFER_SIZE];
+    va_list args;
+    int length;
+
+    if (format == NULL)
+    {
+        return;
+    }
+
+    va_start(args, format);
+    length = vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    if (length < 0)
+    {
+        return;
+    }
+
+    buffer[sizeof(buffer) - 1U] = '\0';
+    OLED_ShowString(x, y, buffer, Char_Size);
 }
 
 void OLED_ShowCHinese(uint8_t x, uint8_t y, uint8_t no)

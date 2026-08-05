@@ -53,8 +53,11 @@ typedef enum {
     ACTION_GRAB_WAIT_GRIP,
     /* 已下发通道5=3度闭爪；等待 800ms，确保果实夹紧后才允许转运。 */
 
+    ACTION_PUT_WAIT_LIFT,
+    /* 已升到 10cm 安全高度；等待 3000ms 后把通道7云台转回 0度中位。 */
+
     ACTION_PUT_WAIT_EXTEND,
-    /* 伸缩臂已收回；视觉抓取流程不升降，直接把通道7云台转回 0度中位。 */
+    /* 伸缩臂已收回；下发升到 10cm 的命令。 */
 
     ACTION_PUT_WAIT_ROTATE,
     /* 云台已回中；等待 500ms 后开爪，避免在转动过程中释放果实。 */
@@ -103,6 +106,7 @@ static const char *ActionScheduler_StateName(ActionState_t state)
     case ACTION_GRAB_WAIT_OPEN:      return "GRAB_OPEN";
     case ACTION_GRAB_WAIT_CLOSE:     return "GRAB_CLOSE";
     case ACTION_GRAB_WAIT_GRIP:      return "GRAB_GRIP";
+    case ACTION_PUT_WAIT_LIFT:       return "PUT_LIFT";
     case ACTION_PUT_WAIT_EXTEND:     return "PUT_EXTEND";
     case ACTION_PUT_WAIT_ROTATE:     return "PUT_ROTATE";
     case ACTION_PUT_WAIT_OPEN:       return "PUT_OPEN";
@@ -209,7 +213,8 @@ static void ActionScheduler_SetExtendCm(float distance_cm)
 static void ActionScheduler_StartPut(ActionState_t first_state)
 {
     /*
-     * 视觉抓取放置仅收缩机械臂；升降由上层在收到完成通知后执行。
+     * 放置顺序必须是：先收缩臂 -> 再抬升10cm -> 最后转云台。
+     * 收缩臂命令先下发，等待其完成后才允许升降台动作。
      */
     (void)PCA9685_Set180Angle(6U, -80.0f);
     s_state = first_state;
@@ -427,14 +432,19 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("GRAB_CLOSE", 0U);
         break;
     case ACTION_GRAB_WAIT_GRIP:
-        /* 果实已夹紧，进入所有抓取/坏果处理共用的放置复位子流程。 */
-        (void)PCA9685_Set180Angle(6U, -80.0f);
-          ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
-          s_state = ACTION_PUT_WAIT_EXTEND;
+        /* 果实夹紧并抓稳后，先收回伸缩臂。 */
+        ActionScheduler_StartPut(ACTION_PUT_WAIT_EXTEND);
         ActionScheduler_Debug("PUT_START", 0U);
         break;
     case ACTION_PUT_WAIT_EXTEND:
-        /* 视觉抓取结束后不操作升降机，云台在当前高度回中。 */
+        /* 伸缩臂完全收回后，升降台抬升到10cm。 */
+        Move_Pos(10.0f);
+        s_state = ACTION_PUT_WAIT_LIFT;
+        ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
+        ActionScheduler_Debug("PUT_LIFT", 0U);
+        break;
+    case ACTION_PUT_WAIT_LIFT:
+        /* 升降台到达10cm后，云台回到中位。 */
         ActionScheduler_StartGimbalMoveInternal(0.0f, ARM_GIMBAL_CENTER_MS, false);
         s_state = ACTION_PUT_WAIT_ROTATE;
         ActionScheduler_SetDeadline(0U);
