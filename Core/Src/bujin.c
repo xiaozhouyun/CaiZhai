@@ -1,5 +1,6 @@
 #include "bujin.h"
 #include "cmsis_os.h"
+#include "vofa.h"
 #include <string.h>
 
 extern UART_HandleTypeDef huart2;
@@ -176,6 +177,13 @@ static void Emm_V5_Pos_Control_ByPulse(uint8_t addr, uint8_t dir, uint16_t vel, 
         0x6B,
     };
 
+    if (addr == 5U)
+    {
+        Vofa_Printf("[EMM_POS_TX] addr=%u dir=%u vel=%u acc=%u pulse=%lu rel=%u sync=%u\r\n",
+                    (unsigned int)addr, (unsigned int)dir, (unsigned int)vel,
+                    (unsigned int)acc, (unsigned long)pulse,
+                    (unsigned int)raF, (unsigned int)snF);
+    }
     Emm_Send(cmd, sizeof(cmd));
     osDelay(5);
 }

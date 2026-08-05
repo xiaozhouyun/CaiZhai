@@ -6,6 +6,7 @@
 #include "pca9685.h"
 #include "tof200f.h"
 #include "vofa.h"
+#include "cmsis_os.h"
 
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
@@ -274,6 +275,7 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     /* 仅安全转场/外部转台命令需要先升至 10cm；视觉微调保持当前抓取高度。 */
     if (lift_before_move && (now_pos < 9.9f || now_pos > 10.1f)) {
         Move_Pos(10.0f);
+        osDelay(2000U);
         s_gimbal_lift_deadline = HAL_GetTick() + ARM_PUT_LIFT_SETTLE_MS;
         s_gimbal_lift_pending = true;
         s_gimbal_moving = false;
@@ -439,6 +441,7 @@ void ActionScheduler_Tick(void)
     case ACTION_PUT_WAIT_EXTEND:
         /* 伸缩臂完全收回后，升降台抬升到10cm。 */
         Move_Pos(10.0f);
+        osDelay(2000U);
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("PUT_LIFT", 0U);
@@ -476,6 +479,7 @@ void ActionScheduler_Tick(void)
     case ACTION_SKIP_WAIT_EXTEND:
         /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
         Move_Pos(10.0f);
+        osDelay(2000U);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("SKIP_LIFT", 5U);

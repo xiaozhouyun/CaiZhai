@@ -9,6 +9,7 @@
 #include "pca9685.h"
 #include "UpperCP.h"
 #include "action_scheduler.h"
+#include "cmsis_os.h"
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -16,8 +17,8 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      3000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
-#define APP_ROUTE_LOWER_SETTLE_MS     3000U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
+#define APP_ROUTE_LIFT_SETTLE_MS      1000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LOWER_SETTLE_MS     1000U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
 #define WAYPOINT_NO_ACT(x, y, yaw)  {(x), (y), (yaw), false}
@@ -197,7 +198,8 @@ void App_RunCurrentMode(void)
     switch (g_app_mode) {
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
-            ActionScheduler_StartGimbalMove(-90.0f, 1500U);
+            // ActionScheduler_StartGimbalMove(-90.0f, 1500U);
+            Chassis_SetSpeed(0.0f, 10.0f);
             App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -268,6 +270,7 @@ static void App_RouteTick(void)
         } else {
             /* 作业点固定执行“抬升至10cm→转向→下降→两次视觉任务”。 */
             Move_Pos(10.0f);
+            osDelay(2000U);
             s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
             App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
             return;
@@ -286,6 +289,7 @@ static void App_RouteTick(void)
             return;
         }
         Move_Pos(2.0f);
+        osDelay(500U);
         s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
@@ -297,14 +301,6 @@ static void App_RouteTick(void)
         UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
-    // } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
-    //     if (!s_grab_done) {
-    //         return;
-    //     }
-    //     Move_Pos(10.0f);
-    //     s_route_state = APP_ROUTE_SECOND_WAIT_LIFT;
-    //     App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
-    //     return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
          if (!s_grab_done) {
             return;
@@ -323,6 +319,7 @@ static void App_RouteTick(void)
             return;
         }
         Move_Pos(2.0f);
+        osDelay(500U);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;

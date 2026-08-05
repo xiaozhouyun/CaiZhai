@@ -7,7 +7,7 @@ extern UART_HandleTypeDef huart2;
 /* 里程计轮子站号地址与参数宏定义 */
 #define ODOMETER_LEFT_FRONT_ADDR         3U             /**< 左前轮电机地址 */
 #define ODOMETER_RIGHT_FRONT_ADDR        4U             /**< 右前轮电机地址 */
-#define ODOMETER_WHEEL_RADIUS_MM         42.5f          /**< 轮子半径：42.5 mm */
+#define ODOMETER_WHEEL_RADIUS_MM         47.5f          /**< 轮子半径：47.5 mm */
 #define ODOMETER_PI                      3.1415926f
 /* 电机角度（度）到物理位移（毫米）的转换系数：2 * pi * r / 360 */
 #define ODOMETER_DEG_TO_MM               (2.0f * ODOMETER_PI * ODOMETER_WHEEL_RADIUS_MM / 360.0f)

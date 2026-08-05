@@ -292,7 +292,6 @@ void USART2_IRQHandler(void)
   {
     uint8_t data = (uint8_t)(huart2.Instance->DR & 0xFF);
     Odometer_UartRxByte(data);
-    return;
   }
 
   /* USER CODE END USART2_IRQn 0 */
