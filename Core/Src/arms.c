@@ -5,6 +5,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os.h"
+#include "action_scheduler.h"
 
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
@@ -136,16 +137,17 @@ void ZhuaZi_open(void)
   */
 void Arm_put(void)
 {
-    /* 缩回抬升后旋转 */
-   Move_Pos(10.0f);
-    vTaskDelay(pdMS_TO_TICKS(100U));
-    PCA9685_Set180AngleSmooth(6U, -80, 100U, 10U); // 6U 云台回中
-    vTaskDelay(pdMS_TO_TICKS(100U));
-    PCA9685_Set180AngleSmooth(7U, 0, 100U, 10U); // 7U 云台回中
-    vTaskDelay(pdMS_TO_TICKS(500U));
-     ZhuaZi_open();
-       vTaskDelay(pdMS_TO_TICKS(1000U));
-    /* 开爪 */
+    /*
+     * 遗留同步接口：当前状态机不调用本函数。
+     * 若被其他模块调用，也保持“先收臂 -> 升至10cm并等待 -> 再转云台”的顺序。
+     */
+    PCA9685_Set180AngleSmooth(6U, -80.0f, 100U, 10U);
+    Move_Pos(10.0f);
+    vTaskDelay(pdMS_TO_TICKS(3000U));
+    ActionScheduler_StartGimbalMove(0.0f, 1000U);
+    vTaskDelay(pdMS_TO_TICKS(1000U));
+    ZhuaZi_open();
+    vTaskDelay(pdMS_TO_TICKS(1000U));
 }
 
 /**
@@ -154,5 +156,6 @@ void Arm_put(void)
   */
 void Arm_SetRotateAngle(float angle_deg)
 {
-    (void)PCA9685_Set180AngleSmooth(7U, angle_deg, 100U, 10U);
+    /* 所有外部云台调用都经此非阻塞接口，接口内部会先升到10cm。 */
+    ActionScheduler_StartGimbalMove(angle_deg, 1000U);
 }

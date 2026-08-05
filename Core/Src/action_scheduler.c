@@ -88,10 +88,14 @@ static ActionState_t s_state;       /* 当前动作阶段 */
 static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基 */
 static uint8_t s_retry_count;       /* 云台到左右极限后的前移次数 */
 static bool s_gimbal_moving;        /* 通道7是否正在执行非阻塞匀速轨迹 */
+static bool s_gimbal_lift_pending;  /* 云台转动前，是否仍在等待升降台到 10cm */
 static float s_gimbal_start_angle;  /* 本次轨迹起始角度 */
 static float s_gimbal_target_angle; /* 本次轨迹目标角度 */
 static uint32_t s_gimbal_start_tick;/* 本次轨迹起始时刻 */
 static uint32_t s_gimbal_duration;  /* 本次轨迹总时长 */
+static uint32_t s_gimbal_lift_deadline; /* 升至10cm后允许开始转云台的时刻 */
+static bool s_pending_command_valid; /* 忙碌期间缓存的一条关键视觉命令 */
+static uint8_t s_pending_command;    /* 仅缓存 arm:0 / arm:5 / arm:6 */
 
 /* 仅在收到命令或切换动作阶段时输出，避免在 20ms Tick 中连续刷屏。 */
 static const char *ActionScheduler_StateName(ActionState_t state)
@@ -138,6 +142,17 @@ static void ActionScheduler_GimbalTick(void)
     uint32_t elapsed;
     float progress;
     float angle;
+
+    if (s_gimbal_lift_pending) {
+        if ((int32_t)(HAL_GetTick() - s_gimbal_lift_deadline) < 0) {
+            return;
+        }
+        s_gimbal_lift_pending = false;
+        s_gimbal_start_angle = PCA9685_Get180Angle(7U);
+        s_gimbal_start_tick = HAL_GetTick();
+        s_gimbal_moving = true;
+        ActionScheduler_Debug("GIMBAL_LIFT_DONE", 0U);
+    }
 
     if (!s_gimbal_moving) {
         return;
@@ -198,12 +213,20 @@ static void ActionScheduler_SetExtendCm(float distance_cm)
 static void ActionScheduler_StartPut(ActionState_t first_state)
 {
     /*
-     * 放置共用起点：Move_Pos 只发送位置命令，不会等待电机实际到位。
-     * 因此必须先等待 ARM_PUT_LIFT_SETTLE_MS，超时前不会进入收臂状态。
+     * 放置顺序必须是：先收缩臂 -> 再抬升10cm -> 最后转云台。
+     * 收缩臂命令先下发，等待其完成后才允许升降台动作。
      */
-    Move_Pos(10.0f);
+    (void)PCA9685_Set180Angle(6U, -80.0f);
     s_state = first_state;
-    ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
+    ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
+}
+
+static void ActionScheduler_StartSkip(void)
+{
+    /* 跳过目标也遵循“先收臂、再抬升、后转云台”的机械安全顺序。 */
+    (void)PCA9685_Set180Angle(6U, -80.0f);
+    s_state = ACTION_SKIP_WAIT_EXTEND;
+    ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
 }
 
 void ActionScheduler_Init(void)
@@ -213,16 +236,25 @@ void ActionScheduler_Init(void)
     s_deadline = 0U;
     s_retry_count = 0U;
     s_gimbal_moving = false;
+    s_gimbal_lift_pending = false;
     s_gimbal_start_angle = 0.0f;
     s_gimbal_target_angle = 0.0f;
     s_gimbal_start_tick = 0U;
     s_gimbal_duration = 0U;
+    s_gimbal_lift_deadline = 0U;
+    s_pending_command_valid = false;
+    s_pending_command = 0U;
 }
 
 bool ActionScheduler_IsBusy(void)
 {
     /* IDLE 以外均表示存在等待时间或后续机械动作。 */
-    return (s_state != ACTION_IDLE);
+    return (s_state != ACTION_IDLE) || s_gimbal_moving || s_gimbal_lift_pending;
+}
+
+bool ActionScheduler_IsGimbalBusy(void)
+{
+    return s_gimbal_moving || s_gimbal_lift_pending;
 }
 
 void ActionScheduler_Cancel(void)
@@ -230,19 +262,34 @@ void ActionScheduler_Cancel(void)
     /* 急停只阻止后续状态推进，已下发到舵机的最后位置保持不变。 */
     s_state = ACTION_IDLE;
     s_gimbal_moving = false;
+    s_gimbal_lift_pending = false;
+    s_pending_command_valid = false;
 }
 
 void ActionScheduler_StartGimbalMove(float target_angle_deg, uint32_t duration_ms)
 {
-    s_gimbal_start_angle = PCA9685_Get180Angle(7U);
     s_gimbal_target_angle = target_angle_deg;
-    s_gimbal_start_tick = HAL_GetTick();
     s_gimbal_duration = duration_ms;
 
+    /* 所有通道7转动前先升到10cm；Move_Pos 无到位反馈，保守等待3秒。 */
+    if (now_pos < 9.9f || now_pos > 10.1f) {
+        Move_Pos(10.0f);
+        s_gimbal_lift_deadline = HAL_GetTick() + ARM_PUT_LIFT_SETTLE_MS;
+        s_gimbal_lift_pending = true;
+        s_gimbal_moving = false;
+        ActionScheduler_Debug("GIMBAL_LIFT_START", 0U);
+        return;
+    }
+
+    /* 调用方已经完成升至10cm的等待，可立即开始本次云台插补。 */
+    s_gimbal_start_angle = PCA9685_Get180Angle(7U);
+    s_gimbal_start_tick = HAL_GetTick();
     if (duration_ms == 0U || s_gimbal_start_angle == s_gimbal_target_angle) {
         (void)PCA9685_Set180Angle(7U, target_angle_deg);
         s_gimbal_moving = false;
+        s_gimbal_lift_pending = false;
     } else {
+        s_gimbal_lift_pending = false;
         s_gimbal_moving = true;
         ActionScheduler_Debug("GIMBAL_START", 0U);
     }
@@ -254,8 +301,17 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
 
     ActionScheduler_Debug("RX", command);
     if (ActionScheduler_IsBusy()) {
-        /* 相机可能连续上报，抓取过程中的新命令不能打断当前序列。 */
-        ActionScheduler_Debug("DROP_BUSY", command);
+        /*
+         * 对准微调命令可由相机下一帧重发；抓取/跳过/坏果命令不能丢失。
+         * 缓存只保留最新一条关键命令，当前动作结束后自动执行。
+         */
+        if (command == 0U || command == 5U || command == 6U) {
+            s_pending_command = command;
+            s_pending_command_valid = true;
+            ActionScheduler_Debug("QUEUE_BUSY", command);
+        } else {
+            ActionScheduler_Debug("DROP_BUSY", command);
+        }
         return;
     }
 
@@ -269,9 +325,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
             if (s_retry_count >= 1000U) {
                 /* 连续五次撞到云台极限仍未对准，按 arm:5 流程放弃当前果实。 */
                 if (upordownFlag == 0U) {
-                    Move_Pos(5.0f);
-                    s_state = ACTION_SKIP_WAIT_LIFT;
-                    ActionScheduler_SetDeadline(ARM_SKIP_LIFT_SETTLE_MS);
+                    ActionScheduler_StartSkip();
                     ActionScheduler_Debug("GIVEUP_SKIP", command);
                 } else {
                     ActionScheduler_Debug("GIVEUP_TREE", command);
@@ -279,12 +333,12 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
                 }
             } else {
                 /* 云台已到机械极限时，底盘前移 100mm 后等待相机重新反馈。 */
-                Emm_V5_Chassis_Pos_Control(1, 50, 20, 40.0f);
+                Emm_V5_Chassis_Pos_Control(1, 50, 20, 20.0f);
                 ActionScheduler_Debug("CHASSIS_FORWARD", command);
             }
         } else {
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
-            (void)PCA9685_Set180AngleSmooth(7U, gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 100, 10);
+            ActionScheduler_StartGimbalMove(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 1000U);
             ActionScheduler_Debug("GIMBAL_STEP", command);
         }
     } else if (command == 3U) {
@@ -309,9 +363,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         /* 跳过目标：升至安全高度后收臂、云台回中，再通知路线继续。 */
         s_retry_count = 0U;
         if (upordownFlag == 0U) {
-            Move_Pos(5.0f);
-            s_state = ACTION_SKIP_WAIT_LIFT;
-            ActionScheduler_SetDeadline(ARM_SKIP_LIFT_SETTLE_MS);
+            ActionScheduler_StartSkip();
             ActionScheduler_Debug("SKIP_START", command);
         } else {
             /* 树上果跳过不需要移动地面升降/伸缩机构。 */
@@ -335,6 +387,15 @@ void ActionScheduler_Tick(void)
 {
     /* 云台匀速轨迹与抓取状态机并行推进，二者均不会阻塞当前任务。 */
     ActionScheduler_GimbalTick();
+
+    /* 云台/抓取空闲后优先执行缓存的 arm:0/5/6，不再依赖 K230 重发。 */
+    if (s_pending_command_valid && !ActionScheduler_IsBusy()) {
+        uint8_t command = s_pending_command;
+        s_pending_command_valid = false;
+        ActionScheduler_Debug("DEQUEUE", command);
+        ActionScheduler_RequestVisionArm(command);
+        return;
+    }
 
     /* 未到本阶段截止时间时不执行 I2C/电机命令，保持 Task07 响应性。 */
     if (!ActionScheduler_Expired()) {
@@ -365,25 +426,28 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_GRIP:
         /* 果实已夹紧，进入所有抓取/坏果处理共用的放置复位子流程。 */
-        ActionScheduler_StartPut(ACTION_PUT_WAIT_LIFT);
+        ActionScheduler_StartPut(ACTION_PUT_WAIT_EXTEND);
         ActionScheduler_Debug("PUT_START", 0U);
         break;
     case ACTION_PUT_WAIT_LIFT:
-        /* 已抬升到位，开始收回伸缩臂。 */
-        (void)PCA9685_Set180Angle(6U, -80.0f);
-        s_state = ACTION_PUT_WAIT_EXTEND;
-        ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
-        ActionScheduler_Debug("PUT_RETRACT", 0U);
-        break;
-    case ACTION_PUT_WAIT_EXTEND:
-        /* 缩臂后将云台回到中位。 */
-        (void)PCA9685_Set180Angle(7U, 0.0f);
+        /* 已抬升到10cm，云台现在才允许回中。 */
+        ActionScheduler_StartGimbalMove(0.0f, ARM_GIMBAL_CENTER_MS);
         s_state = ACTION_PUT_WAIT_ROTATE;
-        ActionScheduler_SetDeadline(ARM_GIMBAL_CENTER_MS);
+        ActionScheduler_SetDeadline(0U);
         ActionScheduler_Debug("PUT_CENTER", 0U);
         break;
+    case ACTION_PUT_WAIT_EXTEND:
+        /* 伸缩臂已完全收回，现在升到10cm，为云台转动预留安全高度。 */
+        Move_Pos(10.0f);
+        s_state = ACTION_PUT_WAIT_LIFT;
+        ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
+        ActionScheduler_Debug("PUT_LIFT", 0U);
+        break;
     case ACTION_PUT_WAIT_ROTATE:
-        /* 云台回中后开爪释放果实。 */
+        /* 云台尚在抬升/回中时禁止开爪；确认转动完成后才释放果实。 */
+        if (ActionScheduler_IsGimbalBusy()) {
+            return;
+        }
         (void)PCA9685_Set180Angle(5U, -30.0f);
         s_state = ACTION_PUT_WAIT_OPEN;
         ActionScheduler_SetDeadline(ARM_CLAW_RELEASE_MS);
@@ -396,21 +460,24 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_SKIP_WAIT_LIFT:
-        /* 跳过目标时不需要开闭爪，直接收臂。 */
-        (void)PCA9685_Set180Angle(6U, -80.0f);
-        s_state = ACTION_SKIP_WAIT_EXTEND;
-        ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
-        ActionScheduler_Debug("SKIP_RETRACT", 5U);
+        /* 已升到10cm，云台现在才允许回中。 */
+        ActionScheduler_StartGimbalMove(0.0f, ARM_SKIP_GIMBAL_CENTER_MS);
+        s_state = ACTION_SKIP_WAIT_ROTATE;
+        ActionScheduler_SetDeadline(0U);
+        ActionScheduler_Debug("SKIP_CENTER", 5U);
         break;
     case ACTION_SKIP_WAIT_EXTEND:
-        /* 收臂完成后再回云台，避免两机构在狭小空间同时摆动。 */
-        (void)PCA9685_Set180Angle(7U, 0.0f);
-        s_state = ACTION_SKIP_WAIT_ROTATE;
-        ActionScheduler_SetDeadline(ARM_SKIP_GIMBAL_CENTER_MS);
-        ActionScheduler_Debug("SKIP_CENTER", 5U);
+        /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
+        Move_Pos(10.0f);
+        s_state = ACTION_SKIP_WAIT_LIFT;
+        ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
+        ActionScheduler_Debug("SKIP_LIFT", 5U);
         break;
     case ACTION_SKIP_WAIT_ROTATE:
         /* 跳过动作完整结束；路线状态机的 s_grab_done 将被置位。 */
+        if (ActionScheduler_IsGimbalBusy()) {
+            return;
+        }
         s_state = ACTION_IDLE;
         ActionScheduler_Debug("SKIP_DONE", 5U);
         App_NotifyGrabDone();
@@ -432,7 +499,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_BAD_WAIT_OPEN:
         /* 开爪等待结束后抬升，并转入通用收臂、回中、开爪流程。 */
-        ActionScheduler_StartPut(ACTION_PUT_WAIT_LIFT);
+        ActionScheduler_StartPut(ACTION_PUT_WAIT_EXTEND);
         ActionScheduler_Debug("BAD_PUT", 6U);
         break;
     default:
