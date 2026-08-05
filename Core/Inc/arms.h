@@ -8,7 +8,7 @@
  */
 
 /* 全局导出变量 */
-extern float now_pos;  /**< 当前升降机构位置，单位：cm */
+extern float volatile now_pos;  /**< 当前升降机构位置，单位：cm */
 
 /* 函数声明 */
 

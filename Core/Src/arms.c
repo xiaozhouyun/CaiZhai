@@ -14,7 +14,7 @@
 #define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)  /* 对应最大伸出 30cm */
 
 /* 当前升降位置，单位 cm；Move_up/Move_down/Move_Pos 会维护这个值。 */
-float now_pos = 0.0f;
+float volatile now_pos = 0.0f;
 
 /**
   * @brief  升降机构上升指定距离
@@ -22,10 +22,11 @@ float now_pos = 0.0f;
   */
 void Move_up(float Data_cm)
 {
-    Emm_V5_PosUP_Control(5, 0, 500, 140, Data_cm * 10.0f, false, 0);
-    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
-                now_pos + Data_cm, now_pos, Data_cm,
-                (unsigned long)Emm_GetTxDropCount());
+    Emm_ClearPendingTxQueue();
+    Emm_V5_PosUP_Control(5, 0, 500, 200, Data_cm * 10.0f, false, 0);
+    // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+    //             now_pos + Data_cm, now_pos, Data_cm,
+    //             (unsigned long)Emm_GetTxDropCount());
     now_pos += Data_cm;
 }
 
@@ -35,11 +36,12 @@ void Move_up(float Data_cm)
   */
 void Move_down(float Data_cm)
 {
-    Emm_V5_PosUP_Control(5, 1, 500, 140, Data_cm * 10.0f, false, 0);
-    Vofa_Printf("[LIFT_SYNC_TX] broadcast=0\r\n");
-    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
-                now_pos - Data_cm, now_pos, -Data_cm,
-                (unsigned long)Emm_GetTxDropCount());
+    Emm_ClearPendingTxQueue();
+    Emm_V5_PosUP_Control(5, 1, 500, 200, Data_cm * 10.0f, false, 0);
+    // Vofa_Printf("[LIFT_SYNC_TX] broadcast=0\r\n");
+    // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+    //             now_pos - Data_cm, now_pos, -Data_cm,
+    //             (unsigned long)Emm_GetTxDropCount());
     now_pos -= Data_cm;
 }
 

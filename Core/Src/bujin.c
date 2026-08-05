@@ -30,6 +30,8 @@ static volatile uint8_t s_emm_tx_head;
 static volatile uint8_t s_emm_tx_tail;
 static volatile uint8_t s_emm_tx_busy;
 static volatile uint32_t s_emm_tx_drop_count;
+static volatile uint32_t s_emm_tx_start_count;
+static volatile uint32_t s_emm_tx_complete_count;
 
 static void Emm_StartNext(void)
 {
@@ -47,6 +49,10 @@ static void Emm_StartNext(void)
         s_emm_tx_busy = 0U;
         s_emm_tx_tail = (uint8_t)((tail + 1U) % EMM_TX_QUEUE_SIZE);
         s_emm_tx_drop_count++;
+    }
+    else
+    {
+        s_emm_tx_start_count++;
     }
 }
 
@@ -99,6 +105,7 @@ void Emm_UartTxCpltCallback(UART_HandleTypeDef *huart)
 
     s_emm_tx_tail = (uint8_t)((s_emm_tx_tail + 1U) % EMM_TX_QUEUE_SIZE);
     s_emm_tx_busy = 0U;
+    s_emm_tx_complete_count++;
     Emm_StartNext();
 }
 
@@ -116,9 +123,65 @@ void Emm_UartErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
+void Emm_ClearPendingTxQueue(void)
+{
+    osStatus_t mutex_status = osOK;
+    uint32_t primask;
+
+    if ((usart2TXHandle != NULL) && (osKernelGetState() == osKernelRunning))
+    {
+        mutex_status = osMutexAcquire(usart2TXHandle, 20U);
+    }
+
+    if (mutex_status != osOK)
+    {
+        return;
+    }
+
+    primask = __get_PRIMASK();
+    __disable_irq();
+    if (s_emm_tx_busy != 0U)
+    {
+        /* 保留 DMA 正在发送的帧，丢弃它后面尚未开始发送的帧。 */
+        s_emm_tx_head = (uint8_t)((s_emm_tx_tail + 1U) % EMM_TX_QUEUE_SIZE);
+    }
+    else
+    {
+        s_emm_tx_head = s_emm_tx_tail;
+    }
+    if (primask == 0U)
+    {
+        __enable_irq();
+    }
+
+    if ((usart2TXHandle != NULL) && (osKernelGetState() == osKernelRunning))
+    {
+        (void)osMutexRelease(usart2TXHandle);
+    }
+}
+
 uint32_t Emm_GetTxDropCount(void)
 {
     return s_emm_tx_drop_count;
+}
+
+void Emm_GetTxStatus(Emm_TxStatus_t *status)
+{
+    uint8_t head;
+    uint8_t tail;
+
+    if (status == NULL)
+    {
+        return;
+    }
+
+    head = s_emm_tx_head;
+    tail = s_emm_tx_tail;
+    status->start_count = s_emm_tx_start_count;
+    status->complete_count = s_emm_tx_complete_count;
+    status->busy = s_emm_tx_busy;
+    status->pending = (head >= tail) ? (uint8_t)(head - tail)
+                                      : (uint8_t)(EMM_TX_QUEUE_SIZE - tail + head);
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)

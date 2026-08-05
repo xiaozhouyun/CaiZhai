@@ -42,6 +42,13 @@ typedef struct {
     uint8_t  auto_trigger;    /**< 上电自动触发回零，0=关闭，1=开启 */
 } Emm_V5_Zero_Params_t;
 
+typedef struct {
+    uint32_t start_count;
+    uint32_t complete_count;
+    uint8_t busy;
+    uint8_t pending;
+} Emm_TxStatus_t;
+
 void Emm_V5_En_Control(uint8_t addr, bool state, bool snF);
 void Emm_V5_Stop_Now(uint8_t addr, bool snF);
 void Emm_V5_Vel_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, bool snF);
@@ -62,5 +69,7 @@ void Emm_V5_PosUP_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, 
 void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm);
 void Emm_UartTxCpltCallback(UART_HandleTypeDef *huart);
 void Emm_UartErrorCallback(UART_HandleTypeDef *huart);
+void Emm_ClearPendingTxQueue(void);
 uint32_t Emm_GetTxDropCount(void);
+void Emm_GetTxStatus(Emm_TxStatus_t *status);
 #endif

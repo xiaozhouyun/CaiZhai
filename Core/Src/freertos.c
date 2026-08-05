@@ -308,7 +308,7 @@ void StartTask03(void *argument)
   {
      g_robot_pos.yaw = Get_zeroYaw();
        Odometer_Update();
-     vTaskDelay(pdMS_TO_TICKS(10));
+     vTaskDelay(pdMS_TO_TICKS(50));
   }
   /* USER CODE END StartTask03 */
 }
@@ -325,14 +325,9 @@ void StartTask03(void *argument)
 void StartTask04(void *argument)
 {
   /* USER CODE BEGIN StartTask04 */
-       osDelay(500);
-       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
-  
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1000);
-  }
+  /* 保留任务，启动后自删除 */
+  osDelay(500);
+  vTaskDelete(NULL);
   /* USER CODE END StartTask04 */
 }
 
@@ -350,7 +345,7 @@ void StartTask05(void *argument)
   /* USER CODE BEGIN StartTask05 */
   // PCA9685_Set180Angle(1U, 0.0f);
        osDelay(500);
-
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   /* Infinite loop */
   for(;;)
   {
@@ -379,7 +374,7 @@ void StartTask06(void *argument)
     
       Navigation_TaskTick();
     
-    osDelay(10);
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask06 */
 }
@@ -401,7 +396,7 @@ void StartTask07(void *argument)
     /* 两个状态机均为单步推进；20ms 是动作时间基准，不得在其中阻塞。 */
     App_RunCurrentMode();
     ActionScheduler_Tick();
-    osDelay(20);
+     vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask07 */
 }

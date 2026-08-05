@@ -421,7 +421,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 1.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 2.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);
@@ -441,7 +441,7 @@ void ActionScheduler_Tick(void)
     case ACTION_PUT_WAIT_EXTEND:
         /* 伸缩臂完全收回后，升降台抬升到10cm。 */
         Move_Pos(10.0f);
-        osDelay(2000U);
+        vTaskDelay(pdMS_TO_TICKS(1000U));
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("PUT_LIFT", 0U);

@@ -10,6 +10,7 @@
 #include "UpperCP.h"
 #include "action_scheduler.h"
 #include "cmsis_os.h"
+#include "vofa.h"
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -83,6 +84,19 @@ static void App_RouteSetDelay(uint32_t delay_ms)
 {
     /* 此函数只记录“下一步最早执行时刻”，不会阻塞当前任务。 */
     s_route_deadline = HAL_GetTick() + delay_ms;
+}
+
+static void App_LogLiftTxStatus(void)
+{
+    Emm_TxStatus_t tx_status;
+
+    Emm_GetTxStatus(&tx_status);
+    Vofa_Printf("[LIFT_WAIT] tx_start=%lu tx_done=%lu busy=%u pending=%u drops=%lu\r\n",
+                (unsigned long)tx_status.start_count,
+                (unsigned long)tx_status.complete_count,
+                (unsigned int)tx_status.busy,
+                (unsigned int)tx_status.pending,
+                (unsigned long)Emm_GetTxDropCount());
 }
 
 /* 航线 A 的目标路径点序列 */
@@ -199,7 +213,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
             // ActionScheduler_StartGimbalMove(-90.0f, 1500U);
-            Chassis_SetSpeed(0.0f, 10.0f);
+           Move_Pos(10.0f);
             App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -271,6 +285,7 @@ static void App_RouteTick(void)
             /* 作业点固定执行“抬升至10cm→转向→下降→两次视觉任务”。 */
             Move_Pos(10.0f);
             osDelay(2000U);
+            App_LogLiftTxStatus();
             s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
             App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
             return;
@@ -285,7 +300,7 @@ static void App_RouteTick(void)
         App_RouteSetDelay(1500U);
         return;
     } else if (s_route_state == APP_ROUTE_FIRST_WAIT_GIMBAL) {
-        if (!App_RouteDelayExpired()) {
+        if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
         Move_Pos(2.0f);
@@ -315,7 +330,7 @@ static void App_RouteTick(void)
         App_RouteSetDelay(1500U);
         return;
     } else if (s_route_state == APP_ROUTE_SECOND_WAIT_GIMBAL) {
-        if (!App_RouteDelayExpired()) {
+        if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
         Move_Pos(2.0f);

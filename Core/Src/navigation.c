@@ -51,12 +51,12 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          10.0f         /**< 目标点判定范围半径，小于 20mm 认为到达 (mm) */
+#define MOVE_ARRIVE_DIST          5.0f         /**< 目标点判定范围半径，小于 20mm 认为到达 (mm) */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
+#define MOVE_MAX_ANGULAR          5.0f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 
 /* 到达最终角度调整控制参数 */
-static float arrived_kp = 2.0f;
+static float arrived_kp = 3.0f;
 static float arrived_ki = 0.0f;
 static float arrived_kd = 0.1f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
