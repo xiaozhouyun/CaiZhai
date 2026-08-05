@@ -21,11 +21,11 @@
 #define ARM_CLAW_OPEN_MS              800U   /* 开爪到完全张开 */
 #define ARM_EXTEND_SETTLE_MS         1500U   /* 伸缩臂移动到测距目标 */
 #define ARM_CLAW_CLOSE_MS             800U   /* 闭爪后等待夹紧果实 */
-#define ARM_LIFT_SETTLE_MS            800U   /* 升降机构到安全高度 */
+#define ARM_PUT_LIFT_SETTLE_MS       3000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_RETRACT_SETTLE_MS        1200U   /* 伸缩臂完全收回 */
 #define ARM_GIMBAL_CENTER_MS         1000U   /* 云台回到中位 */
 #define ARM_CLAW_RELEASE_MS          1000U   /* 开爪后等待果实脱离 */
-#define ARM_SKIP_LIFT_SETTLE_MS       800U   /* 跳过目标时升降到安全高度 */
+#define ARM_SKIP_LIFT_SETTLE_MS      2000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_SKIP_GIMBAL_CENTER_MS     800U   /* 跳过目标时云台回中 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
 #define ARM_BAD_RELEASE_SETTLE_MS     800U   /* 坏果开爪后的机构反应时间 */
@@ -54,7 +54,7 @@ typedef enum {
     /* 已下发通道5=3度闭爪；等待 800ms，确保果实夹紧后才允许转运。 */
 
     ACTION_PUT_WAIT_LIFT,
-    /* 已升到 10cm 安全高度；等待 100ms 后把通道6收回 -80度。 */
+    /* 已升到 10cm 安全高度；等待 3000ms 后把通道6收回 -80度。 */
 
     ACTION_PUT_WAIT_EXTEND,
     /* 伸缩臂已收回；等待 100ms 后把通道7云台转回 0度中位。 */
@@ -66,7 +66,7 @@ typedef enum {
     /* 已下发开爪；等待 1000ms 让果实离爪，然后通知路线执行下一步。 */
 
     ACTION_SKIP_WAIT_LIFT,
-    /* arm:5 或对准失败：已升到 5cm 安全高度；等待 500ms 后收臂。 */
+    /* arm:5 或对准失败：已升到 5cm 安全高度；等待 2000ms 后收臂。 */
 
     ACTION_SKIP_WAIT_EXTEND,
     /* 跳过目标时伸缩臂已收回；等待 1000ms 后将云台转回 0度。 */
@@ -197,10 +197,13 @@ static void ActionScheduler_SetExtendCm(float distance_cm)
 
 static void ActionScheduler_StartPut(ActionState_t first_state)
 {
-    /* 放置共用起点：先升至安全高度，再依次缩臂、回云台、开爪。 */
+    /*
+     * 放置共用起点：Move_Pos 只发送位置命令，不会等待电机实际到位。
+     * 因此必须先等待 ARM_PUT_LIFT_SETTLE_MS，超时前不会进入收臂状态。
+     */
     Move_Pos(10.0f);
     s_state = first_state;
-    ActionScheduler_SetDeadline(ARM_LIFT_SETTLE_MS);
+    ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
 }
 
 void ActionScheduler_Init(void)

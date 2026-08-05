@@ -9,9 +9,9 @@
 
 /* 旋转对齐控制 PID 及前馈参数 */
 //改之前 kp=2.8f, ki=0.0f, kd=0.3f
-static float align_kp = 14.0f;
+static float align_kp = 2.8f;
 static float align_ki = 0.0f;
-static float align_kd = 3.0f;
+static float align_kd = 0.3f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
 
 /** 

@@ -225,8 +225,6 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN StartDefaultTask */
       osDelay(100);
      Navigation_Stop();
-     now_pos=0;
-    Move_Pos(8.0f);
   /* Infinite loop */
   for(;;){
       
