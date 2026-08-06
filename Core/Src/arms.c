@@ -14,7 +14,7 @@
 #define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)  /* 对应最大伸出 30cm */
 
 /* 当前升降位置，单位 cm；Move_up/Move_down/Move_Pos 会维护这个值。 */
-float volatile now_pos = 0.0f;
+float volatile now_pos = 15.0f;
 
 /**
   * @brief  升降机构上升指定距离
@@ -25,8 +25,10 @@ void Move_up(float Data_cm)
     uint32_t drops_before = Emm_GetTxDropCount();
 
     Emm_ClearPendingTxQueue();
-    Emm_V5_PosUP_Control(5, 0, 500, 200, Data_cm * 10.0f, false, 0);
-
+    Emm_V5_PosUP_Control(5, 0, 100, 30, Data_cm * 10.0f, false, 0);
+    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+                now_pos + Data_cm, now_pos, Data_cm,
+                (unsigned long)Emm_GetTxDropCount());
     /* 仅当未发生丢帧时才更新位置跟踪，防止 now_pos 与实际物理位置脱节 */
     if (Emm_GetTxDropCount() == drops_before) {
         now_pos += Data_cm;
@@ -42,8 +44,10 @@ void Move_down(float Data_cm)
     uint32_t drops_before = Emm_GetTxDropCount();
 
     Emm_ClearPendingTxQueue();
-    Emm_V5_PosUP_Control(5, 1, 500, 200, Data_cm * 10.0f, false, 0);
-
+    Emm_V5_PosUP_Control(5, 1, 100, 30, Data_cm * 10.0f, false, 0);
+    Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
+                now_pos - Data_cm, now_pos, Data_cm,
+                (unsigned long)Emm_GetTxDropCount());
     /* 仅当未发生丢帧时才更新位置跟踪，防止 now_pos 与实际物理位置脱节 */
     if (Emm_GetTxDropCount() == drops_before) {
         now_pos -= Data_cm;

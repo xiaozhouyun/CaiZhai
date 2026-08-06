@@ -214,7 +214,12 @@ void App_RunCurrentMode(void)
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
             // ActionScheduler_StartGimbalMove(-90.0f, 1500U);
            Move_Pos(10.0f);
-            App_SetMode(APP_MODE_IDLE);
+           vTaskDelay(pdMS_TO_TICKS(2000U));
+               Move_Pos(2.0f);
+           vTaskDelay(pdMS_TO_TICKS(2000U));
+                Move_Pos(15.0f);
+           vTaskDelay(pdMS_TO_TICKS(2000U));
+           App_SetMode(APP_MODE_IDLE);
             break;
 
         case APP_MODE_IDLE:
