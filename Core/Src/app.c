@@ -106,23 +106,23 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
-    WAYPOINT(-1950.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
 };
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1950.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1950.0f, 500.0f, 0.0f, false),
-    WAYPOINT(-1950.0f, 1000.0f, 0.0f, false),
-    WAYPOINT(-1950.0f, 1500.0f, 0.0f, false),
-    WAYPOINT(-1950.0f, 2000.0f, 0.0f, false),
-    WAYPOINT(-1950.0f, 2500.0f, 0.0f, false),
-    WAYPOINT(-2700.0f, 2500.0f, -PI, false),
-    WAYPOINT(-2700.0f, 2000.0f, -PI, false),
-    WAYPOINT(-2700.0f, 1500.0f, -PI, false),
-    WAYPOINT(-2700.0f, 1000.0f, -PI, false),
-    WAYPOINT(-2700.0f, 500.0f, -PI, false),
-    WAYPOINT(-2700.0f, 0.0f, -PI, false),
+    WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 500.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 1000.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 1500.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 2000.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 2500.0f, 0.0f, false),
+    WAYPOINT(-2600.0f, 2500.0f, -PI, false),
+    WAYPOINT(-2600.0f, 2000.0f, -PI, false),
+    WAYPOINT(-2600.0f, 1500.0f, -PI, false),
+    WAYPOINT(-2600.0f, 1000.0f, -PI, false),
+    WAYPOINT(-2600.0f, 500.0f, -PI, false),
+    WAYPOINT(-2600.0f, 0.0f, -PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -239,7 +239,19 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
-            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_IDLE);
+            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_BACK);
+            break;
+        case APP_MODE_BACK:
+            /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
+            s_dynamic_route[0].x_mm = g_robot_pos.x;
+            s_dynamic_route[0].y_mm = 0.0f;
+            s_dynamic_route[0].yaw_rad = 0.0f;
+            s_dynamic_route[0].has_action = false;
+            s_dynamic_route[1].x_mm = 0.0f;
+            s_dynamic_route[1].y_mm = 0.0f;
+            s_dynamic_route[1].yaw_rad = 0.0f;
+            s_dynamic_route[1].has_action = false;
+            App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;
 
         default:

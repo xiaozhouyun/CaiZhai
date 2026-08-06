@@ -230,15 +230,11 @@ void StartDefaultTask(void *argument)
       Emm_V5_En_Control(2, true, true);
       Emm_V5_En_Control(3, true, true);
       Emm_V5_En_Control(4, true, true);
-         Emm_V5_En_Control(5, true, true);
+      Emm_V5_En_Control(5, true, true);
       Emm_V5_Synchronous_motion(0);
-
       Navigation_Stop();
-  /* Infinite loop */
-  for(;;){
-
-    osDelay(100);
-  }
+  /* 初始化完成，任务自杀 */
+  vTaskDelete(NULL);
   /* USER CODE END StartDefaultTask */
 }
 
@@ -259,38 +255,13 @@ void StartTask02(void *argument)
          osDelay(500);
   for(;;)
   {
-
-    // float vofa_values[5];
-
     if ((OLED_IsReady() != 0U) && ((HAL_GetTick() - oled_last_refresh) >= 500U))
     {
       oled_last_refresh = HAL_GetTick();
-      // OLED_ShowString(40, 0, "        ", 16);
-      // OLED_ShowFloat(40, 0, g_robot_pos.yaw, 6, 16);
-      // OLED_ShowString(40, 2, "        ", 16);
-      // OLED_ShowFloat(40, 2, TofData / 10.0f, 6, 16);
-      // OLED_ShowString(24, 4, "        ", 16);
-      // OLED_ShowFloat(24, 4, g_robot_pos.x, 6, 16);
-      // OLED_ShowString(24, 6, "        ", 16);
-      // OLED_ShowFloat(24, 6, g_robot_pos.y, 6, 16);
       oled_print(0, 0, 16, "X=%.2f", g_robot_pos.x);
       oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
       oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
     }
-
-    // vofa_values[0] = g_robot_pos.x / 10.0f;
-    // vofa_values[1] = g_robot_pos.y / 10.0f;
-    // vofa_values[2] = g_robot_pos.yaw;
-    // vofa_values[3] = TofData / 10.0f;
-    // vofa_values[4] = (float)navigation_state;
-    // Vofa_SendFirewater(vofa_values, 5U);
-
-    /* 打印 5U 夹爪舵机当前角度到 VOFA (FireWater 协议) */
-    // {
-    //     float angle_5u = PCA9685_Get180Angle(6U);
-    //     Vofa_SendFirewater(&angle_5u, 1U);
-    // }
-
     Tiancan_Process();
     osDelay(100);
  
@@ -315,7 +286,7 @@ void StartTask03(void *argument)
   for(;;)
   {
      g_robot_pos.yaw = Get_zeroYaw();
-       Odometer_Update();
+      Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(50));
   }
   /* USER CODE END StartTask03 */
@@ -352,7 +323,7 @@ void StartTask05(void *argument)
 {
   /* USER CODE BEGIN StartTask05 */
   // PCA9685_Set180Angle(1U, 0.0f);
-       osDelay(500);
+       osDelay(200);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
   /* Infinite loop */
   for(;;)
@@ -381,8 +352,7 @@ void StartTask06(void *argument)
   { 
     
       Navigation_TaskTick();
-    
-    vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask06 */
 }
@@ -404,7 +374,7 @@ void StartTask07(void *argument)
     /* 两个状态机均为单步推进；20ms 是动作时间基准，不得在其中阻塞。 */
     App_RunCurrentMode();
     ActionScheduler_Tick();
-     vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask07 */
 }
