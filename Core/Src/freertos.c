@@ -348,9 +348,7 @@ void StartTask06(void *argument)
   /* USER CODE BEGIN StartTask06 */
   /* Infinite loop */
   for(;;)
-  
   { 
-    
       Navigation_TaskTick();
       vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -369,12 +367,20 @@ void StartTask06(void *argument)
 void StartTask07(void *argument)
 {
   /* USER CODE BEGIN StartTask07 */
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = pdMS_TO_TICKS(15);
+
+  /* 获取当前的系统节拍作为初始唤醒时间 */
+  xLastWakeTime = xTaskGetTickCount();
+
   for(;;)
   {
-    /* 两个状态机均为单步推进；20ms 是动作时间基准，不得在其中阻塞。 */
+    /* 两个状态机均为单步推进；10ms 是严格的动作时间基准，不得在其中阻塞。 */
     App_RunCurrentMode();
     ActionScheduler_Tick();
-    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    /* 使用绝对延时替代相对延时，消除任务执行耗时和抢占带来的抖动 */
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
   /* USER CODE END StartTask07 */
 }

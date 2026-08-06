@@ -123,11 +123,21 @@ void Emm_UartErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/**
+ * @brief  清空发送环形队列
+ * @note   采用双重锁保护：Mutex 防多任务并发，屏蔽中断防底层硬件并发
+ */
 void Emm_ClearPendingTxQueue(void)
 {
     osStatus_t mutex_status = osOK;
     uint32_t primask;
 
+    /* 
+     * 1. 任务级保护：
+     * usart2TXHandle != NULL 确保系统资源已创建。
+     * osKernelGetState() == osKernelRunning 确保内核已启动。
+     * 满足条件则尝试获取 Mutex，避免多个任务同时清空队列。
+     */
     if ((usart2TXHandle != NULL) && (osKernelGetState() == osKernelRunning))
     {
         mutex_status = osMutexAcquire(usart2TXHandle, 20U);
@@ -138,9 +148,16 @@ void Emm_ClearPendingTxQueue(void)
         return;
     }
 
+    /* 
+     * 2. 中断级保护（进入临界区）：
+     * 读取并保存当前 PRIMASK 状态，随后关闭全局中断。
+     * 确保接下来对队列头尾指针的操作是原子的，防止被 DMA 发送完成中断打断。
+     */
     primask = __get_PRIMASK();
     __disable_irq();
+
     if (s_emm_tx_busy != 0U)
+
     {
         /* 保留 DMA 正在发送的帧，丢弃它后面尚未开始发送的帧。 */
         s_emm_tx_head = (uint8_t)((s_emm_tx_tail + 1U) % EMM_TX_QUEUE_SIZE);
@@ -160,6 +177,10 @@ void Emm_ClearPendingTxQueue(void)
     }
 }
 
+/**
+ * @brief  获取因队列满而丢弃的发送帧总数
+ * @return 丢包计数值。数值持续上涨说明发送频率过快或总线拥堵。
+ */
 uint32_t Emm_GetTxDropCount(void)
 {
     return s_emm_tx_drop_count;

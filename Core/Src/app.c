@@ -28,6 +28,9 @@
 /* 当前系统的全局应用模式 */
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 
+/* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
+volatile bool g_enable_grasp_logic = 0;
+
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 static volatile bool s_app_running;
 static volatile bool s_stop_requested;
@@ -86,17 +89,22 @@ static void App_RouteSetDelay(uint32_t delay_ms)
     s_route_deadline = HAL_GetTick() + delay_ms;
 }
 
+/**
+ * @brief  调试用：打印云台及升降机构底层 TX 队列的健康状态
+ * @note   当前处于注释屏蔽状态，以节省串口和 CPU 资源。
+ *         排查发送卡死或丢包时可恢复 Vofa_Printf 打印。
+ */
 static void App_LogLiftTxStatus(void)
 {
     Emm_TxStatus_t tx_status;
 
     Emm_GetTxStatus(&tx_status);
-    Vofa_Printf("[LIFT_WAIT] tx_start=%lu tx_done=%lu busy=%u pending=%u drops=%lu\r\n",
-                (unsigned long)tx_status.start_count,
-                (unsigned long)tx_status.complete_count,
-                (unsigned int)tx_status.busy,
-                (unsigned int)tx_status.pending,
-                (unsigned long)Emm_GetTxDropCount());
+    // Vofa_Printf("[LIFT_WAIT] tx_start=%lu tx_done=%lu busy=%u pending=%u drops=%lu\r\n",
+    //             (unsigned long)tx_status.start_count,
+    //             (unsigned long)tx_status.complete_count,
+    //             (unsigned int)tx_status.busy,
+    //             (unsigned int)tx_status.pending,
+    //             (unsigned long)Emm_GetTxDropCount());
 }
 
 /* 航线 A 的目标路径点序列 */
@@ -295,19 +303,24 @@ static void App_RouteTick(void)
         if (!Navigation_IsIdle()) {
             return;
         }
-        if (!s_route[s_route_index].has_action) {
-            /* 普通航点不需要视觉作业：到点后直接请求下一个航点。 */
+        if (!s_route[s_route_index].has_action || !g_enable_grasp_logic) {
+            /* 普通航点或者未开启抓取逻辑时，不需要视觉作业：到点后直接请求下一个航点。 */
             s_route_index++;
         } else {
             /* 作业点固定执行“抬升至10cm→转向→下降→两次视觉任务”。 */
             Move_Pos(10.0f);
-            // osDelay(2000U);
-            App_LogLiftTxStatus();
+            // App_LogLiftTxStatus();
             s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
             App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
             return;
         }
     } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LIFT) {
+        /* 
+         * 前置拦截（Guard Clause）检查：
+         * 1. !App_RouteDelayExpired()：路径规划延时（如到位等待）未结束
+         * 2. ActionScheduler_IsGimbalBusy()：云台当前正忙于执行转动或复位动作
+         * 只要满足任意一条，即放弃当前周期的执行，等待下轮 Tick。防止指令冲突打断当前动作。
+         */
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
@@ -321,7 +334,6 @@ static void App_RouteTick(void)
             return;
         }
         Move_Pos(2.0f);
-        // osDelay(500U);
         s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
@@ -351,7 +363,6 @@ static void App_RouteTick(void)
             return;
         }
         Move_Pos(2.0f);
-        // osDelay(500U);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;

@@ -267,12 +267,22 @@ void ActionScheduler_Cancel(void)
     s_pending_command_valid = false;
 }
 
+/**
+ * @brief  启动云台运动及关联的防碰撞安全抬升逻辑
+ * @param  target_angle_deg 目标角度
+ * @param  duration_ms      转动耗时，0 表示瞬发
+ * @param  lift_before_move 是否需要安全抬升（大范围转场设 true，视觉微调设 false）
+ * 
+ * @note   关键状态机标志位说明：
+ *         - s_gimbal_lift_pending: 等待升降机到达安全高度（云台死锁禁止转动）
+ *         - s_gimbal_moving: 升降完成/无需升降，云台正在平滑插补转动中
+ */
 static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint32_t duration_ms, bool lift_before_move)
 {
     s_gimbal_target_angle = target_angle_deg;
     s_gimbal_duration = duration_ms;
 
-    /* 仅安全转场/外部转台命令需要先升至 10cm；视觉微调保持当前抓取高度。 */
+    /* 第一步：防碰撞安全抬升。仅大范围转场需要先升至 10cm，视觉微调保持原高度。 */
     if (lift_before_move && (now_pos < 9.9f || now_pos > 10.1f)) {
         Move_Pos(10.0f);
         osDelay(2000U);
@@ -293,7 +303,7 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     } else {
         s_gimbal_lift_pending = false;
         s_gimbal_moving = true;
-        ActionScheduler_Debug("GIMBAL_START", 0U);
+        // ActionScheduler_Debug("GIMBAL_START", 0U);
     }
 }
 
