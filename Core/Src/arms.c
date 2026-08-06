@@ -7,14 +7,32 @@
 #include "cmsis_os.h"
 #include "action_scheduler.h"
 #include "vofa.h"
+#include "odometer_pause.h"
 
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
 #define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)  /* -80°→+25° 总行程 */
 #define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)  /* 对应最大伸出 30cm */
+#define LIFT_ODOMETER_PAUSE_MS        20U
+#define LIFT_TX_IDLE_TIMEOUT_MS        5U
+#define LIFT_RX_GUARD_MS               1U
 
 /* 当前升降位置，单位 cm；Move_up/Move_down/Move_Pos 会维护这个值。 */
 float volatile now_pos = 15.0f;
+
+static bool Arms_PrepareLiftTx(void)
+{
+    Odometer_PausePolling(LIFT_ODOMETER_PAUSE_MS);
+    Emm_ClearPendingTxQueue();
+    if (!Emm_WaitTxIdle(LIFT_TX_IDLE_TIMEOUT_MS))
+    {
+        Vofa_Printf("[LIFT_DBG] USART2 busy timeout\r\n");
+        return false;
+    }
+
+    osDelay(LIFT_RX_GUARD_MS);
+    return true;
+}
 
 /**
   * @brief  升降机构上升指定距离
@@ -22,9 +40,14 @@ float volatile now_pos = 15.0f;
   */
 void Move_up(float Data_cm)
 {
-    uint32_t drops_before = Emm_GetTxDropCount();
+    uint32_t drops_before;
 
-    Emm_ClearPendingTxQueue();
+    if (!Arms_PrepareLiftTx())
+    {
+        return;
+    }
+
+    drops_before = Emm_GetTxDropCount();
     Emm_V5_PosUP_Control(5, 0, 100, 30, Data_cm * 10.0f, false, 0);
     Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
                 now_pos + Data_cm, now_pos, Data_cm,
@@ -41,9 +64,14 @@ void Move_up(float Data_cm)
   */
 void Move_down(float Data_cm)
 {
-    uint32_t drops_before = Emm_GetTxDropCount();
+    uint32_t drops_before;
 
-    Emm_ClearPendingTxQueue();
+    if (!Arms_PrepareLiftTx())
+    {
+        return;
+    }
+
+    drops_before = Emm_GetTxDropCount();
     Emm_V5_PosUP_Control(5, 1, 100, 30, Data_cm * 10.0f, false, 0);
     Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
                 now_pos - Data_cm, now_pos, Data_cm,
@@ -143,7 +171,7 @@ void Arm_ExtendZero(void)
   */
 void ZhuaZi_close(void)
 {
-    (void)PCA9685_Set180AngleSmooth(5U, 6.0f, 100U, 10U);
+    (void)PCA9685_Set180AngleSmooth(5U, 5.0f, 100U, 10U);
 }
 
 /**

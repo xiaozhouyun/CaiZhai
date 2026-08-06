@@ -1,4 +1,5 @@
 #include "odometer.h"
+#include "odometer_pause.h"
 #include "bujin.h"
 #include "navigation.h"
 
@@ -35,6 +36,7 @@ float motor_half_delta_mm;                              /* 左右轮中心平均
 static uint8_t odom_rx_len;                             /* 当前缓存内接收字节的计数 */
 static OdometerWheelState odom_left;                    /* 左前轮里程计状态 */
 static OdometerWheelState odom_right;                   /* 右前轮里程计状态 */
+static volatile uint32_t odometer_pause_until;          /* 暂停轮询截止时刻 */
 
 /**
  * @brief 计算单轮在一个采样周期内的相对旋转角度，并转换为毫米位移量
@@ -150,11 +152,17 @@ void Odometer_Init(void)
     odom_left = (OdometerWheelState){0};
     odom_right = (OdometerWheelState){0};
     odom_rx_len = 0U;
+    odometer_pause_until = 0U;
     motor_half_delta_mm = 0.0f;
     
     /* 清除过载错误并开启串口中断 */
     __HAL_UART_CLEAR_OREFLAG(&huart2);
     __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+}
+
+void Odometer_PausePolling(uint32_t duration_ms)
+{
+    odometer_pause_until = HAL_GetTick() + duration_ms;
 }
 
 /**
@@ -165,6 +173,10 @@ void Odometer_Update(void)
     static uint8_t toggle;
     static uint32_t last_poll_time;
     uint32_t now = HAL_GetTick();
+
+    if ((int32_t)(now - odometer_pause_until) < 0) {
+        return;
+    }
 
     /* 限制最小轮询采样间隔时间 */
     if ((uint32_t)(now - last_poll_time) < 50U) {

@@ -97,7 +97,7 @@ osThreadId_t myTask05Handle;
 const osThreadAttr_t myTask05_attributes = {
   .name = "myTask05",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal7,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for myTask06 */
 osThreadId_t myTask06Handle;
@@ -253,10 +253,9 @@ void StartDefaultTask(void *argument)
 /* USER CODE END Header_StartTask02 */
 void StartTask02(void *argument)
 {
-  uint32_t oled_last_refresh = 0U;
-
   /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
+  static uint32_t oled_last_refresh = 0;
          osDelay(500);
   for(;;)
   {

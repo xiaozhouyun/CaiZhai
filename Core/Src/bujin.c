@@ -184,6 +184,28 @@ void Emm_GetTxStatus(Emm_TxStatus_t *status)
                                       : (uint8_t)(EMM_TX_QUEUE_SIZE - tail + head);
 }
 
+bool Emm_WaitTxIdle(uint32_t timeout_ms)
+{
+    uint32_t start_tick = HAL_GetTick();
+    Emm_TxStatus_t status;
+
+    for (;;)
+    {
+        Emm_GetTxStatus(&status);
+        if ((status.busy == 0U) && (status.pending == 0U))
+        {
+            return true;
+        }
+
+        if ((uint32_t)(HAL_GetTick() - start_tick) >= timeout_ms)
+        {
+            return false;
+        }
+
+        osDelay(1U);
+    }
+}
+
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
     Emm_UartTxCpltCallback(huart);

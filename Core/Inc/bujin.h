@@ -70,6 +70,7 @@ void Emm_V5_Chassis_Pos_Control(uint8_t dir, uint16_t vel, uint8_t acc, float mm
 void Emm_UartTxCpltCallback(UART_HandleTypeDef *huart);
 void Emm_UartErrorCallback(UART_HandleTypeDef *huart);
 void Emm_ClearPendingTxQueue(void);
+bool Emm_WaitTxIdle(uint32_t timeout_ms);
 uint32_t Emm_GetTxDropCount(void);
 void Emm_GetTxStatus(Emm_TxStatus_t *status);
 #endif
