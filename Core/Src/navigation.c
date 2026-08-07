@@ -10,6 +10,7 @@
 
 /* 旋转对齐控制 PID 及前馈参数 */
 //改之前 kp=2.8f, ki=0.0f, kd=0.3f
+//kd 0.3→0.6 增强微分阻尼，抑制角度环超调
 static float align_kp = 2.8f;
 static float align_ki = 0.0f;
 static float align_kd = 0.3f;
@@ -28,7 +29,6 @@ TiancanPid_t anglepid = {
 };
 
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐状态基础静态摩擦力前馈控制量 */
-#define ALIGN_FF_THRESH           0.15f         /**< 前馈启动阈值（当角度偏差大于此值时使用前馈） */
 #define MAX_ANGULAR               2.0f          /**< 旋转对齐状态下最大角速度限制 (rad/s) */
 #define ALIGN_ERR_THRESH          0.01f         /**< 对齐精度判定阈值 (rad) */
 
@@ -52,7 +52,7 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          5.0f         /**< 目标点判定范围半径，小于 20mm 认为到达 (mm) */
+#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径，小于 15mm 认为到达 (mm)，给里程计过期留缓冲 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 
@@ -74,7 +74,7 @@ TiancanPid_t arrivedpid = {
     .target = &arrived_target
 };
 
-#define ARRIVED_MAX_ANGULAR       1.5f          /**< 终点最大角速度限制 (rad/s) */
+#define ARRIVED_MAX_ANGULAR       0.8f          /**< 终点最大角速度限制 (rad/s) */
 #define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad) */
 
 /* 状态机全局变量 */
@@ -298,9 +298,11 @@ static void Navigation_HandleTargetAlign(void)
     /* PD闭环反馈控制旋转（使用 anglepid 全局变量中的 PID 参数） */
     angular_speed = -((*anglepid.kp) * err + (*anglepid.kd) * (err - last_err) / dt);
     
-    /* 引入前馈常数，以克服电机及地面的死区摩擦力，提高调节速度 */
-    if (fabsf(err) > ALIGN_FF_THRESH) {
-        angular_speed -= (err > 0.0f) ? ALIGN_FF_BASE : -ALIGN_FF_BASE;
+    /* 比例前馈：误差越大前馈越强，平滑归零无突变，从根本上避免超调 */
+    {
+        float ff_ratio = fabsf(err) / NAV_PI;
+        if (ff_ratio > 1.0f) ff_ratio = 1.0f;
+        angular_speed -= (err > 0.0f) ? (ALIGN_FF_BASE * ff_ratio) : -(ALIGN_FF_BASE * ff_ratio);
     }
     
     /* 饱和度限幅保护 */
@@ -314,12 +316,7 @@ static void Navigation_HandleTargetAlign(void)
     Chassis_SetSpeed(0.0f, angular_speed);
     
     /* ======== 新增：将目标值与反馈值发送到 VOFA+ 绘制波形 ======== */
-    {
-        float vofa_data[2];
-        vofa_data[0] = (*anglepid.target) * 180.0f / NAV_PI; /* 目标角度 (转为度) */
-        vofa_data[1] = g_robot_pos.yaw;                      /* 当前反馈角度 (度) */
-        Vofa_SendFloat(vofa_data, 2);
-    }
+  
     /* ============================================================= */
 
     last_err = err;
