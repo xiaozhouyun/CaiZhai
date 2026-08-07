@@ -18,16 +18,16 @@
  * 这些时间从“命令已下发”开始计时，期间状态机不下发下一机械动作，
  * 但 StartTask07、导航和串口任务仍可继续运行。实机调慢/调快只改这里。
  */
-#define ARM_TOF_SETTLE_MS             200U   /* 触发测距后，等待 TOF 刷新 */
-#define ARM_CLAW_OPEN_MS              800U   /* 开爪到完全张开 */
-#define ARM_EXTEND_SETTLE_MS         1500U   /* 伸缩臂移动到测距目标 */
+#define ARM_TOF_SETTLE_MS             50U   /* 触发测距后，等待 TOF 刷新 */
+#define ARM_CLAW_OPEN_MS              500U   /* 开爪到完全张开 */
+#define ARM_EXTEND_SETTLE_MS         1000U   /* 伸缩臂移动到测距目标 */
 #define ARM_CLAW_CLOSE_MS             800U   /* 闭爪后等待夹紧果实 */
-#define ARM_PUT_LIFT_SETTLE_MS       2000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
-#define ARM_RETRACT_SETTLE_MS        1200U   /* 伸缩臂完全收回 */
-#define ARM_GIMBAL_CENTER_MS         1000U   /* 云台回到中位 */
+#define ARM_PUT_LIFT_SETTLE_MS       1000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_RETRACT_SETTLE_MS        1000U   /* 伸缩臂完全收回 */
+#define ARM_GIMBAL_CENTER_MS         500U   /* 云台回到中位 */
 #define ARM_CLAW_RELEASE_MS          1000U   /* 开爪后等待果实脱离 */
-#define ARM_SKIP_LIFT_SETTLE_MS      3000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
-#define ARM_SKIP_GIMBAL_CENTER_MS     800U   /* 跳过目标时云台回中 */
+#define ARM_SKIP_LIFT_SETTLE_MS      1000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_SKIP_GIMBAL_CENTER_MS     400U   /* 跳过目标时云台回中 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
 #define ARM_BAD_RELEASE_SETTLE_MS     800U   /* 坏果开爪后的机构反应时间 */
 
@@ -357,7 +357,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         } else {
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
             /* 视觉对准阶段固定在抓取高度，不能伪造“已升到10cm”的 now_pos。 */
-            ActionScheduler_StartGimbalMoveInternal(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 1000U, false);
+            ActionScheduler_StartGimbalMoveInternal(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 150U, false);
             ActionScheduler_Debug("GIMBAL_STEP", command);
         }
     } else if (command == 3U) {
@@ -431,7 +431,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 2.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 3.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);
@@ -451,7 +451,6 @@ void ActionScheduler_Tick(void)
     case ACTION_PUT_WAIT_EXTEND:
         /* 伸缩臂完全收回后，升降台抬升到10cm。 */
         Move_Pos(25.0f);
-        vTaskDelay(pdMS_TO_TICKS(1000U));
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("PUT_LIFT", 0U);

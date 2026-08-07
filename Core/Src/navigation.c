@@ -55,6 +55,7 @@ TiancanPid_t movepid = {
 #define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径，小于 15mm 认为到达 (mm)，给里程计过期留缓冲 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
+#define MOVE_FF_BASE              60.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
@@ -74,7 +75,8 @@ TiancanPid_t arrivedpid = {
     .target = &arrived_target
 };
 
-#define ARRIVED_MAX_ANGULAR       0.8f          /**< 终点最大角速度限制 (rad/s) */
+#define ARRIVED_MAX_ANGULAR       0.4f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
+#define ARRIVED_FF_BASE           0.15f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
 #define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad) */
 
 /* 状态机全局变量 */
@@ -405,8 +407,10 @@ static void Navigation_HandleMoving(void)
         current_linear_speed = target_linear_speed;
     }
 
-    /* 根据倒车模式选择给底盘发送的线速度正负号 */
-    float final_linear_speed = s_is_reverse_mode ? -current_linear_speed : current_linear_speed;
+    /* 根据倒车模式选择给底盘发送的线速度正负号，并叠加静摩擦前馈 */
+    float ff_sign = s_is_reverse_mode ? -1.0f : 1.0f;
+    float final_linear_speed = (s_is_reverse_mode ? -current_linear_speed : current_linear_speed)
+                             + MOVE_FF_BASE * ff_sign;
     Chassis_SetSpeed(final_linear_speed, angular_speed);
     last_err = err;
     last_time = now;
@@ -447,6 +451,14 @@ static void Navigation_HandleArrived(void)
     
     /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
     angular_speed = -((*arrivedpid.kp) * err + (*arrivedpid.kd) * (err - last_err) / dt);
+
+    /* 静摩擦前馈：与 TargetAlign 同理，误差比例缩放，突破起步死区 */
+    {
+        float ff_ratio = fabsf(err) / (float)PI;
+        if (ff_ratio > 1.0f) ff_ratio = 1.0f;
+        angular_speed -= (err > 0.0f) ? (ARRIVED_FF_BASE * ff_ratio) : -(ARRIVED_FF_BASE * ff_ratio);
+    }
+
     if (angular_speed > ARRIVED_MAX_ANGULAR) {
         angular_speed = ARRIVED_MAX_ANGULAR;
     } else if (angular_speed < -ARRIVED_MAX_ANGULAR) {
