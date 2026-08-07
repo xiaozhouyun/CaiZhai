@@ -43,6 +43,7 @@
 #include "tiancan.h"
 #include "arms.h"
 #include "action_scheduler.h"
+#include "key.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -104,7 +105,7 @@ osThreadId_t myTask06Handle;
 const osThreadAttr_t myTask06_attributes = {
   .name = "myTask06",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for myTask07 */
 osThreadId_t myTask07Handle;
@@ -335,6 +336,7 @@ void StartTask05(void *argument)
   // PCA9685_Set180Angle(1U, 0.0f);
        osDelay(200);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+//      Chassis_SetSpeed(0.0f,0.2f);
   /* Infinite loop */
   for(;;)
   {
@@ -385,7 +387,8 @@ void StartTask07(void *argument)
 
   for(;;)
   {
-    /* 两个状态机均为单步推进；10ms 是严格的动作时间基准，不得在其中阻塞。 */
+    /* 两个状态机均为单步推进；15ms 是严格的动作时间基准，不得在其中阻塞。 */
+    Key_Scan();
     App_RunCurrentMode();
     ActionScheduler_Tick();
     

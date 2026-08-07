@@ -431,7 +431,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 4.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 5.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);
@@ -522,7 +522,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_BAD_WAIT_DISTANCE:
         /* 坏果与正常果的差别是目标伸臂量少 1cm，后续均复用放置流程。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 4.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 5.0f);
         (void)PCA9685_Set180Angle(5U, 3.0f);
         s_state = ACTION_BAD_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_CLAW_CLOSE_MS);

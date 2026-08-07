@@ -1,42 +1,89 @@
 #include "key.h"
-#include "app.h"
+#include "navigation.h"
 
 /**
  * @file    key.c
- * @brief   按键及 EXTI 外部中断处理模块
- * 
- * @note    引脚及中断映射关系：
- *          - Key1: key1_Pin (PB9), EXTI9_5_IRQn，下降沿触发
- *          - Key2: key2_Pin (PE0), EXTI0_IRQn，  下降沿触发
- *          - Key3: key3_Pin (PC2), EXTI2_IRQn，  下降沿触发
- *          任何按键按下触发 EXTI 中断时，均会首先翻转 user_led 灯 (PB2)。
+ * @brief   按键轮询扫描模块（非中断方式，软件消抖）
+ *
+ * @note    引脚映射：
+ *          - led1 (PB9), 内部上拉，按下为低电平
+ *          - led3 (PE0), 内部上拉，按下为低电平
+ *          - led2 (PC2), 内部上拉，按下为低电平
+ *          任何按键按下时，均会首先翻转 user_led 灯 (PB2)。
+ *
+ *          消抖策略：连续两次扫描读到相同电平才确认状态变化。
+ *          扫描周期 15ms → 消抖时间约 30ms。
  */
+
+#define KEY_DEBOUNCE_CNT  2U   /**< 消抖确认次数：2 * 扫描周期 = 稳定窗口 */
+
+/* 每个按键的消抖状态 */
+static struct {
+    uint8_t last;        /**< 上一次读到的电平 */
+    uint8_t stable_cnt;  /**< 连续读到相同电平的次数 */
+    uint8_t triggered;   /**< 本次按下是否已触发动作（防重复触发）*/
+} g_key[3];
 
 /**
- * @brief  重写 HAL 库 GPIO 外部中断回调函数 (GPIO EXTI Callback)
- * @param  GPIO_Pin 触发中断的 GPIO 引脚编号
+ * @brief  按键轮询扫描函数
+ * @note   需由 FreeRTOS 任务周期性调用（建议周期 10~20ms）。
+ *         下降沿检测：引脚从高（未按下）→ 低（按下）且消抖窗口内保持稳定。
  */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+void Key_Scan(void)
 {
-    /* 检查是否为按键 1、按键 2 或按键 3 的中断触发 */
-    if (GPIO_Pin == key1_Pin || GPIO_Pin == key2_Pin || GPIO_Pin == key3_Pin)
-    {
-        /* 先翻转一次 user_led 灯 (PB2) */
-        HAL_GPIO_TogglePin(user_led_GPIO_Port, user_led_Pin);
+    /* 读取三个按键的当前电平（上拉 → 未按时为高，按下为低）*/
+    const uint8_t raw[3] = {
+        (uint8_t)HAL_GPIO_ReadPin(led1_GPIO_Port, led1_Pin), /* led1: PB9 */
+        (uint8_t)HAL_GPIO_ReadPin(led3_GPIO_Port, led3_Pin), /* led3: PE0 */
+        (uint8_t)HAL_GPIO_ReadPin(led2_GPIO_Port, led2_Pin)  /* led2: PC2 */
+    };
 
-        /* 针对不同按键的后续逻辑分支 */
-        if (GPIO_Pin == key1_Pin)
+    /* 对三个按键做统一的消抖 + 下降沿检测 */
+    for (uint8_t i = 0U; i < 3U; i++)
+    {
+        if (raw[i] == g_key[i].last)
         {
-            /* Key1 按下：启动航线 A */
-            App_SetMode(APP_MODE_ROUTE_A);
+            /* 电平未变，累加消抖计数 */
+            if (g_key[i].stable_cnt < KEY_DEBOUNCE_CNT)
+            {
+                g_key[i].stable_cnt++;
+            }
+
+            /* 消抖窗口满足，且为低电平（按下），且本轮未触发过 → 有效按下 */
+            if (g_key[i].stable_cnt >= KEY_DEBOUNCE_CNT
+                && raw[i] == 0U
+                && g_key[i].triggered == 0U)
+            {
+                g_key[i].triggered = 1U;
+
+                /* 任意按键按下都翻转 LED */
+                HAL_GPIO_TogglePin(user_led_GPIO_Port, user_led_Pin);
+
+                switch (i)
+                {
+                case 0U: /* led1: 启动原地旋转 */
+                    Chassis_SetSpeed(0.0f, 0.2f);
+                    break;
+                case 1U: /* led3: 预留 */
+                    break;
+                case 2U: /* led2: 预留 */
+                    break;
+                default:
+                    break;
+                }
+            }
         }
-        else if (GPIO_Pin == key2_Pin)
+        else
         {
-            /* Key2 按下处理 */
+            /* 电平跳变 → 复位消抖计数，等待重新稳定 */
+            g_key[i].stable_cnt = 0U;
+            g_key[i].last = raw[i];
         }
-        else if (GPIO_Pin == key3_Pin)
+
+        /* 按键释放（回到高电平且稳定）→ 复位触发标记，允许下次按下再次响应 */
+        if (g_key[i].stable_cnt >= KEY_DEBOUNCE_CNT && raw[i] == 1U)
         {
-            /* Key3 按下处理 */
+            g_key[i].triggered = 0U;
         }
     }
 }
