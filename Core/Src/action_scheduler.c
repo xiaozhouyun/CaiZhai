@@ -19,17 +19,18 @@
  * 但 StartTask07、导航和串口任务仍可继续运行。实机调慢/调快只改这里。
  */
 #define ARM_TOF_SETTLE_MS             50U   /* 触发测距后，等待 TOF 刷新 */
-#define ARM_CLAW_OPEN_MS              500U   /* 开爪到完全张开 */
-#define ARM_EXTEND_SETTLE_MS         1000U   /* 伸缩臂移动到测距目标 */
-#define ARM_CLAW_CLOSE_MS             800U   /* 闭爪后等待夹紧果实 */
-#define ARM_PUT_LIFT_SETTLE_MS       1000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
-#define ARM_RETRACT_SETTLE_MS        1000U   /* 伸缩臂完全收回 */
-#define ARM_GIMBAL_CENTER_MS         500U   /* 云台回到中位 */
-#define ARM_CLAW_RELEASE_MS          1000U   /* 开爪后等待果实脱离 */
-#define ARM_SKIP_LIFT_SETTLE_MS      1000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
-#define ARM_SKIP_GIMBAL_CENTER_MS     400U   /* 跳过目标时云台回中 */
+#define ARM_CLAW_OPEN_MS              400U   /* 开爪到完全张开 */
+#define ARM_EXTEND_SETTLE_MS          600U   /* 伸缩臂移动到测距目标 */
+#define ARM_CLAW_CLOSE_MS             500U   /* 闭爪后等待夹紧果实 */
+#define ARM_PUT_LIFT_SETTLE_MS        2000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_RETRACT_SETTLE_MS         600U   /* 伸缩臂完全收回 */
+#define ARM_GIMBAL_CENTER_MS          400U   /* 云台回到中位 */
+#define ARM_GIMBAL_SETTLE_MS          200U   /* 云台停稳后再开爪，防惯性摆动 */
+#define ARM_CLAW_RELEASE_MS           600U   /* 开爪后等待果实脱离 */
+#define ARM_SKIP_LIFT_SETTLE_MS       2000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_SKIP_GIMBAL_CENTER_MS     300U   /* 跳过目标时云台回中 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
-#define ARM_BAD_RELEASE_SETTLE_MS     800U   /* 坏果开爪后的机构反应时间 */
+#define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
 
 /*
  * 抓取动作状态机说明：
@@ -285,7 +286,7 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     /* 第一步：防碰撞安全抬升。仅大范围转场需要先升至 10cm，视觉微调保持原高度。 */
     if (lift_before_move && (now_pos < 9.9f || now_pos > 10.1f)) {
         Move_Pos(25.0f);
-        osDelay(1000U);
+        osDelay(500U);
         s_gimbal_lift_deadline = HAL_GetTick() + ARM_PUT_LIFT_SETTLE_MS;
         s_gimbal_lift_pending = true;
         s_gimbal_moving = false;
@@ -431,7 +432,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 3.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 4.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);
@@ -463,8 +464,13 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("PUT_CENTER", 0U);
         break;
     case ACTION_PUT_WAIT_ROTATE:
-        /* 云台尚在抬升/回中时禁止开爪；确认转动完成后才释放果实。 */
+        /* 云台插补中则等待；插补结束后额外等 ARM_GIMBAL_SETTLE_MS 停稳再开爪 */
         if (ActionScheduler_IsGimbalBusy()) {
+            return;
+        }
+        /* 首次不忙时设停稳截止，下个 Tick 再放行 */
+        if (s_deadline == 0U) {
+            ActionScheduler_SetDeadline(ARM_GIMBAL_SETTLE_MS);
             return;
         }
         (void)PCA9685_Set180Angle(5U, -30.0f);
@@ -488,7 +494,6 @@ void ActionScheduler_Tick(void)
     case ACTION_SKIP_WAIT_EXTEND:
         /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
         Move_Pos(25.0f);
-        osDelay(1000U);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("SKIP_LIFT", 5U);
@@ -498,13 +503,17 @@ void ActionScheduler_Tick(void)
         if (ActionScheduler_IsGimbalBusy()) {
             return;
         }
+        if (s_deadline == 0U) {
+            ActionScheduler_SetDeadline(ARM_GIMBAL_SETTLE_MS);
+            return;
+        }
         s_state = ACTION_IDLE;
         ActionScheduler_Debug("SKIP_DONE", 5U);
         App_NotifyGrabDone();
         break;
     case ACTION_BAD_WAIT_DISTANCE:
         /* 坏果与正常果的差别是目标伸臂量少 1cm，后续均复用放置流程。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 2.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 4.0f);
         (void)PCA9685_Set180Angle(5U, 3.0f);
         s_state = ACTION_BAD_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_CLAW_CLOSE_MS);

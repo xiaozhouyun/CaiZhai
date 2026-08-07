@@ -48,7 +48,7 @@ void Move_down(float Data_cm)
     }
 
     drops_before = Emm_GetTxDropCount();
-    Emm_V5_PosUP_Control(5, 0, 100, 30, Data_cm * 10.0f, false, 0);
+    Emm_V5_PosUP_Control(5, 0, 100, 50, Data_cm * 10.0f, false, 0);
     // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
     //             now_pos + Data_cm, now_pos, Data_cm,
     //             (unsigned long)Emm_GetTxDropCount());
@@ -72,7 +72,7 @@ void Move_up(float Data_cm)
     }
 
     drops_before = Emm_GetTxDropCount();
-    Emm_V5_PosUP_Control(5, 1, 100, 30, Data_cm * 10.0f, false, 0);
+    Emm_V5_PosUP_Control(5, 1, 100, 50, Data_cm * 10.0f, false, 0);
     // Vofa_Printf("[LIFT_DBG] target=%.2f old=%.2f delta=%.2f drops=%lu\r\n",
     //             now_pos - Data_cm, now_pos, Data_cm,
     //             (unsigned long)Emm_GetTxDropCount());
