@@ -32,6 +32,10 @@ extern volatile AppMode_t g_app_mode;
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
 extern volatile bool g_enable_grasp_logic;
 
+/* 内部状态标志：路径导航运行中 / 停止请求 */
+extern volatile bool s_app_running;
+extern volatile bool s_stop_requested;
+
 /**
  * @brief 初始化应用状态，复位模式和控制变量
  */

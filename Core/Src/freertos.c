@@ -233,6 +233,11 @@ void StartDefaultTask(void *argument)
       Emm_V5_En_Control(5, true, true);
       Emm_V5_Synchronous_motion(0);
       Navigation_Stop();
+//              Move_Pos(25.0f);
+             vTaskDelay(pdMS_TO_TICKS(2000U));
+//        s_app_running = true;
+//        s_stop_requested = false;
+//        App_SetMode(APP_MODE_ROUTE_A);
    
   /* 初始化完成，任务自杀 */
   vTaskDelete(NULL);

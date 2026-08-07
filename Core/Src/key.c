@@ -1,4 +1,5 @@
 #include "key.h"
+#include "app.h"
 
 /**
  * @file    key.c
@@ -26,7 +27,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         /* 针对不同按键的后续逻辑分支 */
         if (GPIO_Pin == key1_Pin)
         {
-            /* Key1 按下处理 */
+            /* Key1 按下：启动航线 A */
+            App_SetMode(APP_MODE_ROUTE_A);
         }
         else if (GPIO_Pin == key2_Pin)
         {

@@ -284,8 +284,8 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
 
     /* 第一步：防碰撞安全抬升。仅大范围转场需要先升至 10cm，视觉微调保持原高度。 */
     if (lift_before_move && (now_pos < 9.9f || now_pos > 10.1f)) {
-        Move_Pos(10.0f);
-        osDelay(2000U);
+        Move_Pos(25.0f);
+        osDelay(1000U);
         s_gimbal_lift_deadline = HAL_GetTick() + ARM_PUT_LIFT_SETTLE_MS;
         s_gimbal_lift_pending = true;
         s_gimbal_moving = false;
@@ -450,7 +450,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_PUT_WAIT_EXTEND:
         /* 伸缩臂完全收回后，升降台抬升到10cm。 */
-        Move_Pos(10.0f);
+        Move_Pos(25.0f);
         vTaskDelay(pdMS_TO_TICKS(1000U));
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
@@ -488,7 +488,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_SKIP_WAIT_EXTEND:
         /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
-        Move_Pos(10.0f);
+        Move_Pos(25.0f);
         osDelay(1000U);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);

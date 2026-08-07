@@ -32,8 +32,8 @@ volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 volatile bool g_enable_grasp_logic = 1;
 
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
-static volatile bool s_app_running;
-static volatile bool s_stop_requested;
+volatile bool s_app_running;
+volatile bool s_stop_requested;
 static volatile bool s_grab_done;      /* 视觉动作机完成一次处理后置位 */
 static const AppWaypoint_t *s_route;   /* 当前执行路线；A 指向常量，C 指向下方静态副本 */
 static AppWaypoint_t s_dynamic_route[12]; /* C 区规划结果，不能使用函数栈数组 */
@@ -227,7 +227,8 @@ void App_RunCurrentMode(void)
         //    vTaskDelay(pdMS_TO_TICKS(2000U));
         //         Move_Pos(15.0f);
         //    vTaskDelay(pdMS_TO_TICKS(2000U));
-              Voice_Num(17);
+            Move_Pos(25.0f);
+              vTaskDelay(pdMS_TO_TICKS(2000U));
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -238,7 +239,7 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
-                Move_Pos(15.0f);
+                Move_Pos(25.0f);
               vTaskDelay(pdMS_TO_TICKS(2000U));
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
@@ -312,7 +313,7 @@ static void App_RouteTick(void)
             s_route_index++;
         } else {
             /* 作业点固定执行“抬升至10cm→转向→下降→两次视觉任务”。 */
-            Move_Pos(10.0f);
+            Move_Pos(25.0f);
             // App_LogLiftTxStatus();
             s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
             App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
