@@ -29,7 +29,7 @@
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
-volatile bool g_enable_grasp_logic = 0;
+volatile bool g_enable_grasp_logic = 1;
 
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 static volatile bool s_app_running;
@@ -120,16 +120,16 @@ static const AppWaypoint_t k_route_a[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     // WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 400.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 900.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 1400.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 1900.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
-    WAYPOINT(-2600.0f, 2400.0f, -PI, false),
-    WAYPOINT(-2600.0f, 1900.0f, -PI, false),
-    WAYPOINT(-2600.0f, 1400.0f, -PI, false),
-    WAYPOINT(-2600.0f, 900.0f, -PI, false),
-    WAYPOINT(-2600.0f, 400.0f, -PI, false),
+    WAYPOINT(-1900.0f, 450.0f, 0.0f, 1),
+    WAYPOINT(-1900.0f, 950.0f, 0.0f, 1),
+    WAYPOINT(-1900.0f, 1450.0f, 0.0f, 1),
+    WAYPOINT(-1900.0f, 1950.0f, 0.0f, 1),
+    WAYPOINT(-1900.0f, 2450.0f, 0.0f, false),
+    WAYPOINT(-2600.0f, 2450.0f, -PI, 0),
+    WAYPOINT(-2600.0f, 1950.0f, -PI, 1),
+    WAYPOINT(-2600.0f, 1450.0f, -PI, 1),
+    WAYPOINT(-2600.0f, 950.0f, -PI, 1),
+    WAYPOINT(-2600.0f, 450.0f, -PI, 1),
     WAYPOINT(-2600.0f, 0.0f, -PI, false),
 };
 
@@ -221,12 +221,13 @@ void App_RunCurrentMode(void)
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
             // ActionScheduler_StartGimbalMove(-90.0f, 1500U);
-           Move_Pos(10.0f);
-           vTaskDelay(pdMS_TO_TICKS(2000U));
-               Move_Pos(2.0f);
-           vTaskDelay(pdMS_TO_TICKS(2000U));
-                Move_Pos(15.0f);
-           vTaskDelay(pdMS_TO_TICKS(2000U));
+        //    Move_Pos(10.0f);
+        //    vTaskDelay(pdMS_TO_TICKS(2000U));
+        //        Move_Pos(2.0f);
+        //    vTaskDelay(pdMS_TO_TICKS(2000U));
+        //         Move_Pos(15.0f);
+        //    vTaskDelay(pdMS_TO_TICKS(2000U));
+              Voice_Num(17);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -237,6 +238,8 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
+                Move_Pos(15.0f);
+              vTaskDelay(pdMS_TO_TICKS(2000U));
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
             break;
