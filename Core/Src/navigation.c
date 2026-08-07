@@ -55,7 +55,7 @@ TiancanPid_t movepid = {
 #define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径，小于 15mm 认为到达 (mm)，给里程计过期留缓冲 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
-#define MOVE_FF_BASE              60.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
+#define MOVE_FF_BASE              100.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
@@ -76,7 +76,7 @@ TiancanPid_t arrivedpid = {
 };
 
 #define ARRIVED_MAX_ANGULAR       0.5f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
-#define ARRIVED_FF_BASE           0.15f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
+#define ARRIVED_FF_BASE           0.20f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
 #define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad) */
 
 /* 状态机全局变量 */

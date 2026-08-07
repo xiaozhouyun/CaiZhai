@@ -243,7 +243,7 @@ void UpperCP_RX(void)
 
 void cmd_func(void)
 {
-    if (memcmp(ret, "cmd", 3) == 0) {
+    if (strncmp(ret, "cmd", 3) == 0) {
         float temp_num = 0.0f;
         char *p_num;
 
@@ -257,7 +257,7 @@ void cmd_func(void)
 
 void speed_func(void)
 {
-    if (memcmp(ret, "speed", 5) == 0) {
+    if (strncmp(ret, "speed", 5) == 0) {
         int temp_num = 0;
         char *p_num;
 
@@ -273,7 +273,7 @@ void speed_func(void)
 
 void angle_func(void)
 {
-    if (memcmp(ret, "angle", 5) == 0) {
+    if (strncmp(ret, "angle", 5) == 0) {
         int temp_num = 0;
         char *p_num;
 
@@ -289,7 +289,7 @@ void angle_func(void)
 
 void face_func(void)
 {
-    if (memcmp(ret, "face", 4) == 0) {
+    if (strncmp(ret, "face", 4) == 0) {
         float temp_num = 0.0f;
         char *p_num;
 
@@ -304,7 +304,7 @@ void face_func(void)
 
 void voice_func(void)
 {
-    if (memcmp(ret, "voice", 5) == 0) {
+    if (strncmp(ret, "voice", 5) == 0) {
         int temp_num = 0;
         char *p_num;
 
@@ -319,7 +319,7 @@ void voice_func(void)
 
 void Arm_func(void)
 {
-    if (memcmp(ret, "arm", 3) == 0) {
+    if (strncmp(ret, "arm", 3) == 0) {
         int temp_num = 0;
         char *p_num;
 
@@ -338,7 +338,7 @@ void Arm_func(void)
 
 void ErWeiMa_func(void)
 {
-    if (memcmp(ret, "QR", 2) == 0) {
+    if (strncmp(ret, "QR", 2) == 0) {
         float temp_num = 0.0f;
         char *p_num;
         uint8_t i = 0U;
@@ -358,7 +358,7 @@ void ErWeiMa_func(void)
 
 void Move_func(void)
 {
-    if ((memcmp(ret, UPPERCP_CMD_MOVE_GBK, 4) == 0) || (memcmp(ret, "move", 4) == 0)) {
+    if ((strncmp(ret, UPPERCP_CMD_MOVE_GBK, 4) == 0) || (strncmp(ret, "move", 4) == 0)) {
         float temp_num = 0.0f;
         char *p_num;
 

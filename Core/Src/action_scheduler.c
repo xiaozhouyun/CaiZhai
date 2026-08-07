@@ -7,6 +7,7 @@
 #include "tof200f.h"
 #include "vofa.h"
 #include "cmsis_os.h"
+#include <math.h>
 
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
@@ -18,17 +19,15 @@
  * 这些时间从“命令已下发”开始计时，期间状态机不下发下一机械动作，
  * 但 StartTask07、导航和串口任务仍可继续运行。实机调慢/调快只改这里。
  */
-#define ARM_TOF_SETTLE_MS             50U   /* 触发测距后，等待 TOF 刷新 */
+#define ARM_TOF_SETTLE_MS             200U   /* 触发测距后，等待 TOF 刷新 */
 #define ARM_CLAW_OPEN_MS              400U   /* 开爪到完全张开 */
-#define ARM_EXTEND_SETTLE_MS          600U   /* 伸缩臂移动到测距目标 */
+#define ARM_EXTEND_SETTLE_MS          1200U   /* 伸缩臂移动到测距目标 */
 #define ARM_CLAW_CLOSE_MS             500U   /* 闭爪后等待夹紧果实 */
-#define ARM_PUT_LIFT_SETTLE_MS        2000U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_PUT_LIFT_SETTLE_MS        1500U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_RETRACT_SETTLE_MS         600U   /* 伸缩臂完全收回 */
-#define ARM_GIMBAL_CENTER_MS          400U   /* 云台回到中位 */
 #define ARM_GIMBAL_SETTLE_MS          200U   /* 云台停稳后再开爪，防惯性摆动 */
 #define ARM_CLAW_RELEASE_MS           600U   /* 开爪后等待果实脱离 */
-#define ARM_SKIP_LIFT_SETTLE_MS       2000U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
-#define ARM_SKIP_GIMBAL_CENTER_MS     300U   /* 跳过目标时云台回中 */
+#define ARM_SKIP_LIFT_SETTLE_MS       1500U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
 
@@ -186,7 +185,7 @@ static void ActionScheduler_SetDeadline(uint32_t delay_ms)
     s_deadline = HAL_GetTick() + delay_ms;
 }
 
-static void ActionScheduler_SetExtendCm(float distance_cm)
+void ActionScheduler_SetExtendCm(float distance_cm)
 {
     /* 通道6角度与伸出距离线性对应：-80度为 0mm，+25度为 300mm。 */
     float current = PCA9685_Get180Angle(6U);
@@ -358,7 +357,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         } else {
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
             /* 视觉对准阶段固定在抓取高度，不能伪造“已升到10cm”的 now_pos。 */
-            ActionScheduler_StartGimbalMoveInternal(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 150U, false);
+            ActionScheduler_StartGimbalMoveInternal(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 300U, false);
             ActionScheduler_Debug("GIMBAL_STEP", command);
         }
     } else if (command == 3U) {
@@ -457,8 +456,13 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("PUT_LIFT", 0U);
         break;
     case ACTION_PUT_WAIT_LIFT:
-        /* 升降台到达10cm后，云台回到中位。 */
-        ActionScheduler_StartGimbalMoveInternal(0.0f, ARM_GIMBAL_CENTER_MS, false);
+        /* 升降台到达10cm后，云台回到中位。时长按当前角度比例计算，对齐航线摆动速度。 */
+        {
+            float delta = fabsf(PCA9685_Get180Angle(7U));
+            uint32_t dur = (uint32_t)(delta * 13.0f);
+            if (dur < 300U) dur = 300U;
+            ActionScheduler_StartGimbalMoveInternal(0.0f, dur, false);
+        }
         s_state = ACTION_PUT_WAIT_ROTATE;
         ActionScheduler_SetDeadline(0U);
         ActionScheduler_Debug("PUT_CENTER", 0U);
@@ -485,8 +489,13 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_SKIP_WAIT_LIFT:
-        /* 已升到10cm，云台现在才允许回中。 */
-        ActionScheduler_StartGimbalMove(0.0f, ARM_SKIP_GIMBAL_CENTER_MS);
+        /* 已升到10cm，云台现在才允许回中。时长按当前角度比例计算。 */
+        {
+            float delta = fabsf(PCA9685_Get180Angle(7U));
+            uint32_t dur = (uint32_t)(delta * 13.0f);
+            if (dur < 300U) dur = 300U;
+            ActionScheduler_StartGimbalMove(0.0f, dur);
+        }
         s_state = ACTION_SKIP_WAIT_ROTATE;
         ActionScheduler_SetDeadline(0U);
         ActionScheduler_Debug("SKIP_CENTER", 5U);
