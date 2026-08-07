@@ -3,6 +3,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "tiancan.h"
+#include "vofa.h"
 #include <math.h>
 
 #define NAV_PI                    3.1415926f
@@ -311,6 +312,16 @@ static void Navigation_HandleTargetAlign(void)
 
     /* 旋转状态：线速度为0，输出期望角速度 */
     Chassis_SetSpeed(0.0f, angular_speed);
+    
+    /* ======== 新增：将目标值与反馈值发送到 VOFA+ 绘制波形 ======== */
+    {
+        float vofa_data[2];
+        vofa_data[0] = (*anglepid.target) * 180.0f / NAV_PI; /* 目标角度 (转为度) */
+        vofa_data[1] = g_robot_pos.yaw;                      /* 当前反馈角度 (度) */
+        Vofa_SendFloat(vofa_data, 2);
+    }
+    /* ============================================================= */
+
     last_err = err;
     last_time = now;
 }

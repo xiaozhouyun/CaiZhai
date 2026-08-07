@@ -223,7 +223,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-      osDelay(100);
+      osDelay(1000);
 
       /* 使能四轮驱动电机，snF=true 等待同步触发 */
       Emm_V5_En_Control(1, true, true);
@@ -233,6 +233,8 @@ void StartDefaultTask(void *argument)
       Emm_V5_En_Control(5, true, true);
       Emm_V5_Synchronous_motion(0);
       Navigation_Stop();
+      //  Move_Pos(15.0f);
+      // vTaskDelay(pdMS_TO_TICKS(2000U));
   /* 初始化完成，任务自杀 */
   vTaskDelete(NULL);
   /* USER CODE END StartDefaultTask */
@@ -261,6 +263,10 @@ void StartTask02(void *argument)
       oled_print(0, 0, 16, "X=%.2f", g_robot_pos.x);
       oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
       oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
+      {
+        float vofa_data[3] = {g_robot_pos.x, g_robot_pos.y, g_robot_pos.yaw};
+        Vofa_SendFirewater(vofa_data, 3);
+      }
     }
     Tiancan_Process();
     osDelay(100);

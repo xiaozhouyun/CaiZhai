@@ -46,8 +46,8 @@ struct move {
 #define NAV_COLUMN_SPACING_MM     700.0f        /**< 列间距 */
 
 /* 底盘动力学参数 */
-#define WHEEL_RADIUS_MM           42.5f         /**< 驱动轮半径，单位：mm */
-#define HALF_TRACK_MM             100.0f        /**< 轮距的一半（小车中心到左右轮的侧向距离），单位：mm */
+#define WHEEL_RADIUS_MM           47.5f         /**< 驱动轮半径，单位：mm */
+#define HALF_TRACK_MM             90.0f        /**< 轮距的一半（小车中心到左右轮的侧向距离），单位：mm */
 #define PI                        3.14159265f
 #define TWO_PI                    6.2831853f
 

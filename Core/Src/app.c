@@ -109,10 +109,10 @@ static void App_LogLiftTxStatus(void)
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
-    WAYPOINT(0.0f, 700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1150.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
     WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
 };
@@ -120,16 +120,16 @@ static const AppWaypoint_t k_route_a[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 500.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 1000.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 1500.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 2000.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 2500.0f, 0.0f, false),
-    WAYPOINT(-2600.0f, 2500.0f, -PI, false),
-    WAYPOINT(-2600.0f, 2000.0f, -PI, false),
-    WAYPOINT(-2600.0f, 1500.0f, -PI, false),
-    WAYPOINT(-2600.0f, 1000.0f, -PI, false),
-    WAYPOINT(-2600.0f, 500.0f, -PI, false),
+    WAYPOINT(-1850.0f, 450.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 950.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 1450.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 1950.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 2450.0f, 0.0f, false),
+    WAYPOINT(-2600.0f, 2450.0f, -PI, false),
+    WAYPOINT(-2600.0f, 1950.0f, -PI, false),
+    WAYPOINT(-2600.0f, 1450.0f, -PI, false),
+    WAYPOINT(-2600.0f, 950.0f, -PI, false),
+    WAYPOINT(-2600.0f, 450.0f, -PI, false),
     WAYPOINT(-2600.0f, 0.0f, -PI, false),
 };
 

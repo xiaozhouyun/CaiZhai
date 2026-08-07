@@ -18,7 +18,7 @@
 #define LIFT_RX_GUARD_MS               1U
 
 /* 当前升降位置，单位 cm；Move_up/Move_down/Move_Pos 会维护这个值。 */
-float volatile now_pos = 15.0f;
+float volatile now_pos = 2.0f;
 
 static bool Arms_PrepareLiftTx(void)
 {
@@ -38,7 +38,7 @@ static bool Arms_PrepareLiftTx(void)
   * @brief  升降机构上升指定距离
   * @param  Data_cm 上升距离，单位 cm
   */
-void Move_up(float Data_cm)
+void Move_down(float Data_cm)
 {
     uint32_t drops_before;
 
@@ -62,7 +62,7 @@ void Move_up(float Data_cm)
   * @brief  升降机构下降指定距离
   * @param  Data_cm 下降距离，单位 cm
   */
-void Move_down(float Data_cm)
+void Move_up(float Data_cm)
 {
     uint32_t drops_before;
 
