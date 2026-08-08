@@ -23,7 +23,7 @@
 #define ARM_CLAW_OPEN_MS              400U   /* 开爪到完全张开 */
 #define ARM_EXTEND_SETTLE_MS          1200U   /* 伸缩臂移动到测距目标 */
 #define ARM_CLAW_CLOSE_MS             500U   /* 闭爪后等待夹紧果实 */
-#define ARM_PUT_LIFT_SETTLE_MS        1500U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
+#define ARM_PUT_LIFT_SETTLE_MS        1800U   /* 抓取后升到 10cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_RETRACT_SETTLE_MS         600U   /* 伸缩臂完全收回 */
 #define ARM_GIMBAL_SETTLE_MS          200U   /* 云台停稳后再开爪，防惯性摆动 */
 #define ARM_CLAW_RELEASE_MS           600U   /* 开爪后等待果实脱离 */

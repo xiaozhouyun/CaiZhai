@@ -9,8 +9,6 @@
 #define NAV_PI                    3.1415926f
 
 /* 旋转对齐控制 PID 及前馈参数 */
-//改之前 kp=2.8f, ki=0.0f, kd=0.3f
-//kd 0.3→0.6 增强微分阻尼，抑制角度环超调
 static float align_kp = 2.8f;
 static float align_ki = 0.0f;
 static float align_kd = 0.3f;
@@ -28,12 +26,12 @@ TiancanPid_t anglepid = {
     .target = &target_yaw
 };
 
-#define ALIGN_FF_BASE             0.6f          /**< 旋转对齐状态基础静态摩擦力前馈控制量 */
-#define MAX_ANGULAR               2.0f          /**< 旋转对齐状态下最大角速度限制 (rad/s) */
-#define ALIGN_ERR_THRESH          0.01f         /**< 对齐精度判定阈值 (rad) */
+#define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
+#define ALIGN_MAX_ANGULAR         1.0f          /**< 旋转对齐最大角速度 (rad/s) */
+#define ALIGN_ERR_THRESH          0.01f         /**< 旋转对齐精度阈值 (rad) */
 
 /* 直线行进控制参数 */
-#define MOVE_LINEAR_SPEED         400.0f        /**< 直线行进最大期望线速度 (mm/s) */
+#define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
 static float move_kp = 1.5f;
 static float move_ki = 0.0f;
@@ -54,6 +52,7 @@ TiancanPid_t movepid = {
 
 #define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径，小于 15mm 认为到达 (mm)，给里程计过期留缓冲 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
+#define MOVE_MIN_SPEED            200.0f        /**< 最终线速度最小限制 (mm/s)，防止输出过低电机不转 */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 #define MOVE_FF_BASE              100.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
 
@@ -75,8 +74,9 @@ TiancanPid_t arrivedpid = {
     .target = &arrived_target
 };
 
-#define ARRIVED_SETTLE_MS         500U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
-#define ARRIVED_MAX_ANGULAR       2.0f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
+#define ARRIVED_SETTLE_MS         800U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
+#define ARRIVED_MAX_ANGULAR       1.0f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
+#define ARRIVED_MIN_ANGULAR       0.6f          /**< 终点最小角速度限制 (rad/s)，防止转速过低电机不转 */
 #define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
 #define ARRIVED_ERR_THRESH        0.01f         /**< 最终角度对齐允许最大误差 (rad) */
 
@@ -88,9 +88,7 @@ struct move angle_speed = {0.0f, 0.0f, 0.0f};
 float nav_yaw_zero_deg=0.0f;
 int TarAngle;
 float TarPos = 360.0f;
-bool is_moving;
-float angle_fix;
-float v[2];                                                     /* 保存计算得到的左右侧轮线速度，单位：mm/s */
+float v[2];                                                     /**< 左右轮线速度，单位：mm/s */
 
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
@@ -293,7 +291,7 @@ static void Navigation_HandleTargetAlign(void)
     }
 
     now = xTaskGetTickCount();
-    dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;//计算时间间隔，单位：秒
+    dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
     if (dt <= 0.0f || dt > 0.1f) {
         dt = 0.01f;
     }
@@ -309,18 +307,14 @@ static void Navigation_HandleTargetAlign(void)
     }
     
     /* 饱和度限幅保护 */
-    if (angular_speed > MAX_ANGULAR) {
-        angular_speed = MAX_ANGULAR;
-    } else if (angular_speed < -MAX_ANGULAR) {
-        angular_speed = -MAX_ANGULAR;
+    if (angular_speed > ALIGN_MAX_ANGULAR) {
+        angular_speed = ALIGN_MAX_ANGULAR;
+    } else if (angular_speed < -ALIGN_MAX_ANGULAR) {
+        angular_speed = -ALIGN_MAX_ANGULAR;
     }
 
     /* 旋转状态：线速度为0，输出期望角速度 */
     Chassis_SetSpeed(0.0f, angular_speed);
-    
-    /* ======== 新增：将目标值与反馈值发送到 VOFA+ 绘制波形 ======== */
-  
-    /* ============================================================= */
 
     last_err = err;
     last_time = now;
@@ -333,7 +327,7 @@ static void Navigation_HandleMoving(void)
 {
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
     static float last_err;
-    static float current_linear_speed;           /*：当前实际线速度，用于斜坡软启动 */
+    static float current_linear_speed;           /**< 当前实际线速度，斜坡软启动用 */
     static TickType_t last_time;
     float dx = target.x - g_robot_pos.x;
     float dy = target.y - g_robot_pos.y;
@@ -356,7 +350,7 @@ static void Navigation_HandleMoving(void)
 
     if (last_state != NAVIGATION_STATE_MOVING) {
         last_err = 0.0f;
-        current_linear_speed = 0.0f;             /* 方案2：从0开始斜坡起步 */
+        current_linear_speed = 0.0f;             /* 首次进入从零开始斜坡起步 */
         last_time = xTaskGetTickCount();
     }
     last_state = NAVIGATION_STATE_MOVING;
@@ -368,7 +362,7 @@ static void Navigation_HandleMoving(void)
 
     now = xTaskGetTickCount();
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
-    /* 方案3：dt 加下限保护，防止调度过快时微分项被极度放大 */
+    /* dt 上下限保护，防止微分项在极端调度间隔下爆炸 */
     if (dt < 0.01f || dt > 0.1f) {
         dt = 0.01f;
     }
@@ -412,6 +406,14 @@ static void Navigation_HandleMoving(void)
     float ff_sign = s_is_reverse_mode ? -1.0f : 1.0f;
     float final_linear_speed = (s_is_reverse_mode ? -current_linear_speed : current_linear_speed)
                              + MOVE_FF_BASE * ff_sign;
+
+    /* 最小线速度限制：低于阈值上提到 ±MIN，防止输出过低电机堵转 */
+    if (final_linear_speed > 0.0f && final_linear_speed < MOVE_MIN_SPEED) {
+        final_linear_speed = MOVE_MIN_SPEED;
+    } else if (final_linear_speed < 0.0f && final_linear_speed > -MOVE_MIN_SPEED) {
+        final_linear_speed = -MOVE_MIN_SPEED;
+    }
+
     Chassis_SetSpeed(final_linear_speed, angular_speed);
     last_err = err;
     last_time = now;
@@ -419,37 +421,56 @@ static void Navigation_HandleMoving(void)
 
 /**
  * @brief 终点调整状态处理：在目标点原地旋转至最终期望的偏航角
+ * @note  进入后先停稳等待 ARRIVED_SETTLE_MS，消除惯性，再开始转圈调角度。
  */
 static void Navigation_HandleArrived(void)
 {
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
     static float last_err;
     static TickType_t last_time;
-    *arrivedpid.target = target.yaw * PI / 180.0f;
-    float err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * PI / 180.0f);
+    static TickType_t settle_start;  /**< 进入停稳阶段的时刻 */
+    bool settling;                   /**< 当前是否处于停稳等待中 */
+    float err;
     float dt;
     float angular_speed;
     TickType_t now;
 
-    /* 朝向角误差小于允许误差，本次导航宣告圆满结束，停止小车并进入空闲 */
+    /* 首次进入 ARRIVED → 记录停稳起始时刻 */
+    if (last_state != NAVIGATION_STATE_ARRIVED) {
+        settle_start = xTaskGetTickCount();
+        last_state = NAVIGATION_STATE_ARRIVED;
+        last_err = 0.0f;
+        last_time = settle_start;
+    }
+
+    /* 计算目标角度与当前角度的偏差 */
+    *arrivedpid.target = target.yaw * PI / 180.0f;
+    err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * PI / 180.0f);
+
+    /* 朝向角误差小于允许误差 → 导航完成，停车进入空闲 */
     if (fabsf(err) < ARRIVED_ERR_THRESH) {
         Navigation_Stop();
         last_state = NAVIGATION_STATE_IDLE;
         return;
     }
 
-    if (last_state != NAVIGATION_STATE_ARRIVED) {
-        last_err = 0.0f;
+    /* 停稳等待阶段：保持零速，等待惯性消除 */
+    settling = ((xTaskGetTickCount() - settle_start) < pdMS_TO_TICKS(ARRIVED_SETTLE_MS));
+    if (settling) {
+        Chassis_SetSpeed(0.0f, 0.0f);
+        /* 停稳期间持续刷新 last_time，避免转圈阶段 dt 异常放大 */
         last_time = xTaskGetTickCount();
+        return;
     }
-    last_state = NAVIGATION_STATE_ARRIVED;
+
+    /* --- 以下为转圈调角度阶段 --- */
 
     now = xTaskGetTickCount();
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
     if (dt <= 0.0f || dt > 0.1f) {
         dt = 0.01f;
     }
-    
+
     /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
     angular_speed = -((*arrivedpid.kp) * err + (*arrivedpid.kd) * (err - last_err) / dt);
 
@@ -465,6 +486,14 @@ static void Navigation_HandleArrived(void)
     } else if (angular_speed < -ARRIVED_MAX_ANGULAR) {
         angular_speed = -ARRIVED_MAX_ANGULAR;
     }
+
+    /* 最小角速度限制：低于阈值的非零输出上提到 ±MIN，防止电机堵转或单边不转 */
+    if (angular_speed > 0.0f && angular_speed < ARRIVED_MIN_ANGULAR) {
+        angular_speed = ARRIVED_MIN_ANGULAR;
+    } else if (angular_speed < 0.0f && angular_speed > -ARRIVED_MIN_ANGULAR) {
+        angular_speed = -ARRIVED_MIN_ANGULAR;
+    }
+
     Chassis_SetSpeed(0.0f, angular_speed);
     last_err = err;
     last_time = now;

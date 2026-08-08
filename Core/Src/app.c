@@ -18,7 +18,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      1000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
@@ -29,7 +29,7 @@
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
-volatile bool g_enable_grasp_logic = 0;
+volatile bool g_enable_grasp_logic = 1;
 
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 volatile bool s_app_running;
@@ -120,16 +120,16 @@ static const AppWaypoint_t k_route_a[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     // WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 400.0f, 0.0f, 1),
-    WAYPOINT(-1900.0f, 900.0f, 0.0f, 1),
-    WAYPOINT(-1900.0f, 1400.0f, 0.0f, 1),
-    WAYPOINT(-1900.0f, 1900.0f, 0.0f, 1),
+    WAYPOINT(-1900.0f, 400.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
     WAYPOINT(-2600.0f, 2400.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 1900.0f, -PI, 1),
-    WAYPOINT(-2600.0f, 1400.0f, -PI, 1),
-    WAYPOINT(-2600.0f, 900.0f, -PI, 1),
-    WAYPOINT(-2600.0f, 400.0f, -PI, 1),
+    WAYPOINT(-2600.0f, 1900.0f, -PI, 0),
+    WAYPOINT(-2600.0f, 1400.0f, -PI, 0),
+    WAYPOINT(-2600.0f, 900.0f, -PI, 0),
+    WAYPOINT(-2600.0f, 400.0f, -PI, 0),
     WAYPOINT(-2600.0f, 0.0f, -PI, false),
 };
 
@@ -253,8 +253,8 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
-            // App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_BACK);
-              App_StartRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_BACK);
+            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_BACK);
+            //   App_StartRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_BACK);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */

@@ -68,8 +68,6 @@ extern struct move angle_speed;                 /**< 角速度控制结构体 */
 extern float nav_yaw_zero_deg;                  /**< 零点偏差 */
 extern int TarAngle;
 extern float TarPos;
-extern bool is_moving;
-extern float angle_fix;
 extern float v[2];                              /**< 左右轮计算出的实际控制速度，单位：mm/s */
 
 /* 导航 API 声明 */

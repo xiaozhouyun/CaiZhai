@@ -58,7 +58,7 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin : led2_Pin */
   GPIO_InitStruct.Pin = led2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(led2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : user_led_Pin */
@@ -78,13 +78,13 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin : led1_Pin */
   GPIO_InitStruct.Pin = led1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(led1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : led3_Pin */
   GPIO_InitStruct.Pin = led3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(led3_GPIO_Port, &GPIO_InitStruct);
 
 }
