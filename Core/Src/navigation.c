@@ -51,7 +51,7 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          35.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
+#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
 #define MOVE_MAX_ANGULAR          0.6f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */

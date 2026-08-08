@@ -29,7 +29,7 @@
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
-volatile bool g_enable_grasp_logic = 0;
+volatile bool g_enable_grasp_logic =1;
 
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 volatile bool s_app_running;
@@ -119,17 +119,17 @@ static const AppWaypoint_t k_route_a[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1850.0f, 450.0f, 0.0f, 0),
-    WAYPOINT(-1850.0f, 950.0f, 0.0f, 0),
-    WAYPOINT(-1850.0f, 1450.0f, 0.0f, 0),
-    WAYPOINT(-1850.0f, 1950.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1900.0f, 400.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
     WAYPOINT(-2600.0f, 2400.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1950.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1450.0f, PI, 0),
-    WAYPOINT(-2600.0f, 950.0f, PI, 0),
-    WAYPOINT(-2600.0f, 450.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1900.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1400.0f, PI, 0),
+    WAYPOINT(-2600.0f, 900.0f, PI, 0),
+    WAYPOINT(-2600.0f, 400.0f, PI, 0),
     WAYPOINT(-2600.0f, 0.0f, PI, false),
 };
 
@@ -230,7 +230,7 @@ void App_RunCurrentMode(void)
             // Move_Pos(25.0f);
             //   vTaskDelay(pdMS_TO_TICKS(1500U));
                     // 
-        Chassis_SetSpeed(0.0f,1.0f);
+        Chassis_SetSpeed(0.0f,-0.6f);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -253,18 +253,18 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
-            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9,10}, 5, APP_MODE_BACK);
+            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9}, 5, APP_MODE_BACK);
             //   App_StartRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_BACK);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
             s_dynamic_route[0].y_mm = 0.0f;
-            s_dynamic_route[0].yaw_rad = 0.0f;
+            s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[1].x_mm = 0.0f;
             s_dynamic_route[1].y_mm = 0.0f;
-            s_dynamic_route[1].yaw_rad = -PI/2.0f;
+            s_dynamic_route[1].yaw_rad = 0.0f;         /* 到达起点原点后旋转恢复初始朝向 (0°) */
             s_dynamic_route[1].has_action = false;
             App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;
