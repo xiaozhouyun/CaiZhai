@@ -489,12 +489,24 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_SKIP_WAIT_LIFT:
-        /* 已升到10cm，云台现在才允许回中。时长按当前角度比例计算。 */
+        /* 已升到10cm，根据当前云台角度决定跳过时的转动目标。 */
         {
-            float delta = fabsf(PCA9685_Get180Angle(7U));
+            float cur = PCA9685_Get180Angle(7U);
+            float target;
+            if (cur > 75.0f) {
+                /* 云台在 +90° 附近 → 转到 -90°，模拟完成第二次视野 */
+                target = -90.0f;
+            } else if (cur < -75.0f) {
+                /* 云台在 -90° 附近 → 回中 */
+                target = 0.0f;
+            } else {
+                /* 已经在中位，无需转动 */
+                target = 0.0f;
+            }
+            float delta = fabsf(target - cur);
             uint32_t dur = (uint32_t)(delta * 13.0f);
             if (dur < 300U) dur = 300U;
-            ActionScheduler_StartGimbalMove(0.0f, dur);
+            ActionScheduler_StartGimbalMove(target, dur);
         }
         s_state = ACTION_SKIP_WAIT_ROTATE;
         ActionScheduler_SetDeadline(0U);

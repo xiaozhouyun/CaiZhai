@@ -28,7 +28,7 @@ TiancanPid_t anglepid = {
 
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.0f          /**< 旋转对齐最大角速度 (rad/s) */
-#define ALIGN_ERR_THRESH          0.01f         /**< 旋转对齐精度阈值 (rad) */
+#define ALIGN_ERR_THRESH          0.05f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度，防止死锁卡住 */
 
 /* 直线行进控制参数 */
 #define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
@@ -50,9 +50,9 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径，小于 15mm 认为到达 (mm)，给里程计过期留缓冲 */
+#define MOVE_ARRIVE_DIST          35.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MIN_SPEED            200.0f        /**< 最终线速度最小限制 (mm/s)，防止输出过低电机不转 */
+#define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
 #define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
 #define MOVE_FF_BASE              100.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
 
@@ -78,7 +78,7 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_MAX_ANGULAR       1.0f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
 #define ARRIVED_MIN_ANGULAR       0.6f          /**< 终点最小角速度限制 (rad/s)，防止转速过低电机不转 */
 #define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
-#define ARRIVED_ERR_THRESH        0.01f         /**< 最终角度对齐允许最大误差 (rad) */
+#define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
 
 /* 状态机全局变量 */
 Navigation_State_t navigation_state = NAVIGATION_STATE_IDLE;
@@ -392,14 +392,17 @@ static void Navigation_HandleMoving(void)
         target_linear_speed = MOVE_MIN_LINEAR;
     }
 
-    /* 斜坡滤波，加速时每帧平滑递增，减速时直接跟随（减速无需斜坡） */
+    /* 斜坡滤波：加速与减速均进行平滑控制，防止速度剧变造成急停或甩尾 */
     if (current_linear_speed < target_linear_speed) {
         current_linear_speed += MOVE_LINEAR_RAMP;
         if (current_linear_speed > target_linear_speed) {
             current_linear_speed = target_linear_speed;
         }
-    } else {
-        current_linear_speed = target_linear_speed;
+    } else if (current_linear_speed > target_linear_speed) {
+        current_linear_speed -= MOVE_LINEAR_RAMP;
+        if (current_linear_speed < target_linear_speed) {
+            current_linear_speed = target_linear_speed;
+        }
     }
 
     /* 根据倒车模式选择给底盘发送的线速度正负号，并叠加静摩擦前馈 */
@@ -443,7 +446,16 @@ static void Navigation_HandleArrived(void)
         last_time = settle_start;
     }
 
-    /* 计算目标角度与当前角度的偏差 */
+    /* 1. 优先停稳等待阶段：先保持零速，等待惯性彻底消除让车子完全停稳 */
+    settling = ((xTaskGetTickCount() - settle_start) < pdMS_TO_TICKS(ARRIVED_SETTLE_MS));
+    if (settling) {
+        Chassis_SetSpeed(0.0f, 0.0f);
+        /* 停稳期间持续刷新 last_time，避免后续转圈阶段 dt 异常放大 */
+        last_time = xTaskGetTickCount();
+        return;
+    }
+
+    /* 2. 车子停稳后再计算目标角度与当前角度的偏差 */
     *arrivedpid.target = target.yaw * PI / 180.0f;
     err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * PI / 180.0f);
 
@@ -451,15 +463,6 @@ static void Navigation_HandleArrived(void)
     if (fabsf(err) < ARRIVED_ERR_THRESH) {
         Navigation_Stop();
         last_state = NAVIGATION_STATE_IDLE;
-        return;
-    }
-
-    /* 停稳等待阶段：保持零速，等待惯性消除 */
-    settling = ((xTaskGetTickCount() - settle_start) < pdMS_TO_TICKS(ARRIVED_SETTLE_MS));
-    if (settling) {
-        Chassis_SetSpeed(0.0f, 0.0f);
-        /* 停稳期间持续刷新 last_time，避免转圈阶段 dt 异常放大 */
-        last_time = xTaskGetTickCount();
         return;
     }
 
@@ -518,11 +521,29 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
     v[0] = left_vel;
     v[1] = right_vel;
     
-    /* 控制下发：方向参数由速度符号决定，转速精度转换为整数，同时下发并设置同步标志 */
-    Emm_V5_Vel_Control(left_head, left_vel >= 0.0f, (uint16_t)(left_rpm + 0.5f), 255, true);
-    Emm_V5_Vel_Control(left_tail, left_vel >= 0.0f, (uint16_t)(left_rpm + 0.5f), 255, true);
-    Emm_V5_Vel_Control(right_head, right_vel >= 0.0f, (uint16_t)(right_rpm + 0.5f), 255, true);
-    Emm_V5_Vel_Control(right_tail, right_vel >= 0.0f, (uint16_t)(right_rpm + 0.5f), 255, true);
+    uint16_t send_left_rpm = (uint16_t)(left_rpm + 0.5f);
+    uint16_t send_right_rpm = (uint16_t)(right_rpm + 0.5f);
+    uint8_t left_dir = (left_vel >= 0.0f) ? 1U : 0U;
+    uint8_t right_dir = (right_vel >= 0.0f) ? 1U : 0U;
+
+    /* 低速死区过滤：低于 2 RPM (约 10mm/s) 时强行归零并固定方向，消除极低速电机乱转与颠簸震荡 */
+    if (send_left_rpm < 2U) {
+        send_left_rpm = 0U;
+        left_dir = 1U;
+    }
+    if (send_right_rpm < 2U) {
+        send_right_rpm = 0U;
+        right_dir = 1U;
+    }
+
+    /* 加速度 acc 设为 50，实现电机的平滑加减速，避免 255 造成的急停顿挫 */
+    uint8_t acc = 50U;
+
+    /* 控制下发：低速死区过滤后发送，同时下发并设置同步标志 */
+    Emm_V5_Vel_Control(left_head, left_dir, send_left_rpm, acc, true);
+    Emm_V5_Vel_Control(left_tail, left_dir, send_left_rpm, acc, true);
+    Emm_V5_Vel_Control(right_head, right_dir, send_right_rpm, acc, true);
+    Emm_V5_Vel_Control(right_tail, right_dir, send_right_rpm, acc, true);
     
     /* 广播/通知，触发多电机硬件同步对齐运动 */
     Emm_V5_Synchronous_motion(0);

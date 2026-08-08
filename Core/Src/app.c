@@ -109,17 +109,17 @@ static void App_LogLiftTxStatus(void)
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
-    WAYPOINT(0.0f, 700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1150.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
 };
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    // WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
     WAYPOINT(-1900.0f, 400.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
