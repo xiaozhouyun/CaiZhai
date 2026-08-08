@@ -59,6 +59,7 @@ struct move {
 
 /* 全局导出变量 */
 extern volatile position_t g_robot_pos;         /**< 机器人当前位置（实时里程计累积） */
+extern volatile bool g_enable_auto_reverse;     /**< 自动倒车使能标志：false 时强行转动车头正向行驶 */
 extern Navigation_State_t navigation_state;     /**< 当前导航状态 */
 extern TiancanPid_t anglepid;                   /**< 旋转对齐角度 PID 全局变量（对应 Navigation_HandleTargetAlign 中的角度控制） */
 extern TiancanPid_t movepid;                    /**< 直线行进纠偏 PID 全局变量（对应 Navigation_HandleMoving 中的纠偏控制） */

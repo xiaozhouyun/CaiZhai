@@ -8,10 +8,10 @@
 
 #define NAV_PI                    3.1415926f
 
-/* 旋转对齐控制 PID 及前馈参数 */
-static float align_kp = 2.8f;
+/* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
+static float align_kp = 3.0f;
 static float align_ki = 0.0f;
-static float align_kd = 0.3f;
+static float align_kd = 0.1f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
 
 /** 
@@ -28,14 +28,15 @@ TiancanPid_t anglepid = {
 
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.0f          /**< 旋转对齐最大角速度 (rad/s) */
-#define ALIGN_ERR_THRESH          0.05f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度，防止死锁卡住 */
+#define ALIGN_MIN_ANGULAR         0.6f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
+#define ALIGN_ERR_THRESH          0.05f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
 
 /* 直线行进控制参数 */
 #define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
-static float move_kp = 1.5f;
+static float move_kp = 3.5f;                    /**< 提高航向纠偏响应敏捷度，小角度偏差即刻修正 */
 static float move_ki = 0.0f;
-static float move_kd = 0.1f;
+static float move_kd = 0.2f;
 static float move_target = 0.0f;  /**< 直线行进航偏纠偏目标朝向 (rad) */
 
 /** 
@@ -53,8 +54,8 @@ TiancanPid_t movepid = {
 #define MOVE_ARRIVE_DIST          35.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
-#define MOVE_MAX_ANGULAR          1.5f          /**< 直线纠偏中最大角速度限制 (rad/s) */
-#define MOVE_FF_BASE              100.0f         /**< 直线行进静摩擦力前馈 (mm/s)，叠加到最终线速度克服启动死区 */
+#define MOVE_MAX_ANGULAR          0.6f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
+#define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
@@ -92,7 +93,8 @@ float v[2];                                                     /**< 左右轮�
 
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
-static bool s_is_reverse_mode = false;                           /* 自动倒车模式标志 */
+static bool s_is_reverse_mode = false;                           /* 当前离散导航周期的实际倒车模式标志 */
+volatile bool g_enable_auto_reverse = false;                     /* 自动倒车使能全局开关：默认关闭(false)，强行转动车头正向行驶 */
 
 /* 静态控制函数声明 */
 static void Navigation_HandleIdle(void);
@@ -214,8 +216,8 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     /* 2. 计算如果按正常前进，车头需要旋转的角度偏差 */
     float fwd_err = Navigation_NormalizeRad(heading_angle - g_robot_pos.yaw * NAV_PI / 180.0f);
 
-    /* 3. 自动倒车判定：当目标点位于车后方（角度偏差绝对值 > 100° ≈ 1.745 rad）时，开启自动倒车模式 */
-    if (fabsf(fwd_err) > 1.745f) {
+    /* 3. 自动倒车判定：若全局使能 g_enable_auto_reverse == true 且偏差 > 120° 才会倒车；默认 false 强制转动车头 180° 正向行驶 */
+    if (g_enable_auto_reverse && fabsf(fwd_err) > 2.094f) {
         s_is_reverse_mode = true;
     } else {
         s_is_reverse_mode = false;
@@ -313,6 +315,13 @@ static void Navigation_HandleTargetAlign(void)
         angular_speed = -ALIGN_MAX_ANGULAR;
     }
 
+    /* 最小角速度限制：与终点对齐(Arrived)保持完全一致，防止转速过低电机堵转或单边不转 */
+    if (angular_speed > 0.0f && angular_speed < ALIGN_MIN_ANGULAR) {
+        angular_speed = ALIGN_MIN_ANGULAR;
+    } else if (angular_speed < 0.0f && angular_speed > -ALIGN_MIN_ANGULAR) {
+        angular_speed = -ALIGN_MIN_ANGULAR;
+    }
+
     /* 旋转状态：线速度为0，输出期望角速度 */
     Chassis_SetSpeed(0.0f, angular_speed);
 
@@ -375,11 +384,17 @@ static void Navigation_HandleMoving(void)
         angular_speed = -MOVE_MAX_ANGULAR;
     }
 
-    /* 临近终点减速逻辑，距离小于 200mm 时，线速度呈线性比例减小 */
-    if (distance < 200.0f) {
-        target_linear_speed = MOVE_LINEAR_SPEED * distance / 200.0f;
+    /* 到达终点前 80mm 抑制纠偏角速度：让左右轮保持完全相同的速度直行停车，消除两轮速差引起的甩尾打滑与角度偏斜 */
+    if (distance < 80.0f) {
+        angular_speed = 0.0f;
+    }
+
+    /* 临近终点减速逻辑，距离小于 350mm 时提前平滑减速，防止冲过头 */
+    #define MOVE_DECEL_DIST 350.0f
+    if (distance < MOVE_DECEL_DIST) {
+        target_linear_speed = MOVE_LINEAR_SPEED * (distance / MOVE_DECEL_DIST);
         if (target_linear_speed < MOVE_MIN_LINEAR) {
-            target_linear_speed = MOVE_MIN_LINEAR; /* 限制最小速度，防止死区卡住 */
+            target_linear_speed = MOVE_MIN_LINEAR; /* 限制最小速度 */
         }
     } else {
         target_linear_speed = MOVE_LINEAR_SPEED;
@@ -392,23 +407,24 @@ static void Navigation_HandleMoving(void)
         target_linear_speed = MOVE_MIN_LINEAR;
     }
 
-    /* 斜坡滤波：加速与减速均进行平滑控制，防止速度剧变造成急停或甩尾 */
+    /* 斜坡滤波：加速平滑起步，减速快速响应（减速斜坡取 40mm/s），避免惯性冲点 */
     if (current_linear_speed < target_linear_speed) {
         current_linear_speed += MOVE_LINEAR_RAMP;
         if (current_linear_speed > target_linear_speed) {
             current_linear_speed = target_linear_speed;
         }
     } else if (current_linear_speed > target_linear_speed) {
-        current_linear_speed -= MOVE_LINEAR_RAMP;
+        current_linear_speed -= 40.0f; /* 减速时加大斜坡步长，快速响应刹车 */
         if (current_linear_speed < target_linear_speed) {
             current_linear_speed = target_linear_speed;
         }
     }
 
-    /* 根据倒车模式选择给底盘发送的线速度正负号，并叠加静摩擦前馈 */
+    /* 根据倒车模式选择给底盘发送的线速度正负号，临近终点按距离比例衰减前馈，防止前馈推车冲点 */
     float ff_sign = s_is_reverse_mode ? -1.0f : 1.0f;
+    float ff_ratio = (distance < MOVE_DECEL_DIST) ? (distance / MOVE_DECEL_DIST) : 1.0f;
     float final_linear_speed = (s_is_reverse_mode ? -current_linear_speed : current_linear_speed)
-                             + MOVE_FF_BASE * ff_sign;
+                             + MOVE_FF_BASE * ff_sign * ff_ratio;
 
     /* 最小线速度限制：低于阈值上提到 ±MIN，防止输出过低电机堵转 */
     if (final_linear_speed > 0.0f && final_linear_speed < MOVE_MIN_SPEED) {
@@ -536,8 +552,8 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
         right_dir = 1U;
     }
 
-    /* 加速度 acc 设为 50，实现电机的平滑加减速，避免 255 造成的急停顿挫 */
-    uint8_t acc = 50U;
+    /* 加速度 acc 设为 100，适中刹车力度，既无迟滞拖拽，又不会硬锁死导致轮胎打滑甩尾 */
+    uint8_t acc = 100U;
 
     /* 控制下发：低速死区过滤后发送，同时下发并设置同步标志 */
     Emm_V5_Vel_Control(left_head, left_dir, send_left_rpm, acc, true);

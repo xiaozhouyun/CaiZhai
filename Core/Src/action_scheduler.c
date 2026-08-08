@@ -506,7 +506,7 @@ void ActionScheduler_Tick(void)
             float delta = fabsf(target - cur);
             uint32_t dur = (uint32_t)(delta * 13.0f);
             if (dur < 300U) dur = 300U;
-            ActionScheduler_StartGimbalMove(target, dur);
+            ActionScheduler_StartGimbalMoveInternal(target, dur, false);
         }
         s_state = ACTION_SKIP_WAIT_ROTATE;
         ActionScheduler_SetDeadline(0U);

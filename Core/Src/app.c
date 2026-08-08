@@ -29,7 +29,7 @@
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
-volatile bool g_enable_grasp_logic = 1;
+volatile bool g_enable_grasp_logic = 0;
 
 /* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
 volatile bool s_app_running;
@@ -109,10 +109,10 @@ static void App_LogLiftTxStatus(void)
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
-    WAYPOINT(0.0f, 650.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1150.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1650.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 700.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
 };
@@ -120,17 +120,17 @@ static const AppWaypoint_t k_route_a[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 400.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 1900.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 450.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 950.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1450.0f, 0.0f, 0),
+    WAYPOINT(-1900.0f, 1950.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
-    WAYPOINT(-2600.0f, 2400.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 1900.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 1400.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 900.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 400.0f, -PI, 0),
-    WAYPOINT(-2600.0f, 0.0f, -PI, false),
+    WAYPOINT(-2600.0f, 2400.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1950.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1450.0f, PI, 0),
+    WAYPOINT(-2600.0f, 950.0f, PI, 0),
+    WAYPOINT(-2600.0f, 450.0f, PI, 0),
+    WAYPOINT(-2600.0f, 0.0f, PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -390,6 +390,13 @@ static void App_RouteTick(void)
     }
 
     if (s_route_index < s_route_len) {
+        /* 仅在 A 区最后一个抓果点完成、向 (0,0) 起点倒车时(索引为 4)开启自动倒车；其他航点保持关闭正向前进 */
+        if (s_route == k_route_a && s_route_index == 4U) {
+            g_enable_auto_reverse = true;
+        } else {
+            g_enable_auto_reverse = false;
+        }
+
         /* 本航点已完成，向导航任务请求下一航点；到点结果由下一轮 Tick 检查。 */
         (void)Navigation_Request(s_route[s_route_index].x_mm,
                                  s_route[s_route_index].y_mm,
