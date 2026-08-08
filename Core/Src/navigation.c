@@ -269,6 +269,7 @@ static void Navigation_HandleTargetAlign(void)
 
     /* 首次进入该状态时，计算两点之间的绝对方位角作为期望旋转朝向 */
     if (last_state != NAVIGATION_STATE_TARGET_ALIGN) {
+        Chassis_ClearClogProtection(); /* 刚进入转弯对齐状态，自动清除电机堵转锁死保护 */
         float heading_angle = atan2f(target.x - start.x, target.y - start.y);
         if (s_is_reverse_mode) {
             /* 倒车模式：车尾正对目标点 */
@@ -296,6 +297,13 @@ static void Navigation_HandleTargetAlign(void)
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
     if (dt <= 0.0f || dt > 0.1f) {
         dt = 0.01f;
+    }
+
+    /* 旋转过程中定期（每 500ms）自动清除堵转保护，防止转弯中途卡住 */
+    static TickType_t last_align_clog_clear = 0;
+    if ((now - last_align_clog_clear) >= pdMS_TO_TICKS(500U)) {
+        Chassis_ClearClogProtection();
+        last_align_clog_clear = now;
     }
 
     /* PD闭环反馈控制旋转（使用 anglepid 全局变量中的 PID 参数） */
@@ -456,6 +464,7 @@ static void Navigation_HandleArrived(void)
 
     /* 首次进入 ARRIVED → 记录停稳起始时刻 */
     if (last_state != NAVIGATION_STATE_ARRIVED) {
+        Chassis_ClearClogProtection(); /* 刚进入终点角度调整，自动清除堵转状态 */
         settle_start = xTaskGetTickCount();
         last_state = NAVIGATION_STATE_ARRIVED;
         last_err = 0.0f;
@@ -488,6 +497,13 @@ static void Navigation_HandleArrived(void)
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
     if (dt <= 0.0f || dt > 0.1f) {
         dt = 0.01f;
+    }
+
+    /* 旋转过程中定期（每 500ms）自动清除堵转保护 */
+    static TickType_t last_arrived_clog_clear = 0;
+    if ((now - last_arrived_clog_clear) >= pdMS_TO_TICKS(500U)) {
+        Chassis_ClearClogProtection();
+        last_arrived_clog_clear = now;
     }
 
     /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
@@ -563,6 +579,17 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
     
     /* 广播/通知，触发多电机硬件同步对齐运动 */
     Emm_V5_Synchronous_motion(0);
+}
+
+/**
+ * @brief 清除底盘所有 4 个轮子电机的堵转保护锁死状态
+ */
+void Chassis_ClearClogProtection(void)
+{
+    Emm_V5_Reset_Clog_Pro(left_head);
+    Emm_V5_Reset_Clog_Pro(left_tail);
+    Emm_V5_Reset_Clog_Pro(right_head);
+    Emm_V5_Reset_Clog_Pro(right_tail);
 }
 
 /**

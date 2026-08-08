@@ -125,11 +125,14 @@ void Navigation_Stop(void);
 void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s);
 
 /**
+ * @brief 清除底盘所有 4 个电机的堵转保护锁死状态
+ */
+void Chassis_ClearClogProtection(void);
+
+/**
  * @brief 获取当前偏航角（单位：度）
  */
 float Navigation_GetYawDeg(void);
-
-
 
 #endif
 
