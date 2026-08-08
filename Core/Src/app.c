@@ -119,11 +119,11 @@ static const AppWaypoint_t k_route_a[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
-    WAYPOINT(-1900.0f, 450.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 950.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 1450.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 1950.0f, 0.0f, 0),
+    WAYPOINT(-1850.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1850.0f, 450.0f, 0.0f, 0),
+    WAYPOINT(-1850.0f, 950.0f, 0.0f, 0),
+    WAYPOINT(-1850.0f, 1450.0f, 0.0f, 0),
+    WAYPOINT(-1850.0f, 1950.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
     WAYPOINT(-2600.0f, 2400.0f, PI, 0),
     WAYPOINT(-2600.0f, 1950.0f, PI, 0),
@@ -230,7 +230,7 @@ void App_RunCurrentMode(void)
             // Move_Pos(25.0f);
             //   vTaskDelay(pdMS_TO_TICKS(1500U));
                     // 
-        Chassis_SetSpeed(0.0f,0.6f);
+        Chassis_SetSpeed(0.0f,1.0f);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -264,7 +264,7 @@ void App_RunCurrentMode(void)
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[1].x_mm = 0.0f;
             s_dynamic_route[1].y_mm = 0.0f;
-            s_dynamic_route[1].yaw_rad = PI/2.0f;
+            s_dynamic_route[1].yaw_rad = -PI/2.0f;
             s_dynamic_route[1].has_action = false;
             App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;

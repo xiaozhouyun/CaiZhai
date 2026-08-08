@@ -159,7 +159,7 @@
           <Type>0</Type>
           <LineNumber>481</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134232348</Address>
+          <Address>134232404</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -175,7 +175,7 @@
           <Type>0</Type>
           <LineNumber>193</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134262310</Address>
+          <Address>134263230</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -189,9 +189,9 @@
         <Bp>
           <Number>2</Number>
           <Type>0</Type>
-          <LineNumber>65</LineNumber>
+          <LineNumber>24</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134244408</Address>
+          <Address>134237006</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -200,23 +200,7 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>../Core/Src/key.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\vet6_mdk\../Core/Src/key.c\65</Expression>
-        </Bp>
-        <Bp>
-          <Number>3</Number>
-          <Type>0</Type>
-          <LineNumber>31</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>0</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>0</BreakIfRCount>
-          <Filename>../Core/Src/key.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression></Expression>
+          <Expression>\\vet6_mdk\../Core/Src/key.c\24</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>

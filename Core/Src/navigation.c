@@ -11,7 +11,7 @@
 /* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
 static float align_kp = 3.0f;
 static float align_ki = 0.0f;
-static float align_kd = 0.1f;
+static float align_kd = 0.0f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
 
 /** 
@@ -27,7 +27,7 @@ TiancanPid_t anglepid = {
 };
 
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
-#define ALIGN_MAX_ANGULAR         1.0f          /**< 旋转对齐最大角速度 (rad/s) */
+#define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
 #define ALIGN_MIN_ANGULAR         0.6f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
 #define ALIGN_ERR_THRESH          0.05f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
 
@@ -60,7 +60,7 @@ TiancanPid_t movepid = {
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
 static float arrived_ki = 0.0f;
-static float arrived_kd = 0.1f;
+static float arrived_kd = 0.0f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
 
 /** 
@@ -76,7 +76,7 @@ TiancanPid_t arrivedpid = {
 };
 
 #define ARRIVED_SETTLE_MS         800U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
-#define ARRIVED_MAX_ANGULAR       1.0f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
+#define ARRIVED_MAX_ANGULAR       1.2f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
 #define ARRIVED_MIN_ANGULAR       0.6f          /**< 终点最小角速度限制 (rad/s)，防止转速过低电机不转 */
 #define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
 #define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
@@ -471,9 +471,9 @@ static void Navigation_HandleArrived(void)
         return;
     }
 
-    /* 2. 车子停稳后再计算目标角度与当前角度的偏差 */
-    *arrivedpid.target = target.yaw * PI / 180.0f;
-    err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * PI / 180.0f);
+    /* 2. 车子停稳后再计算目标角度与当前角度的偏差 (target.yaw 本身即为弧度，无需二次乘以 PI/180) */
+    *arrivedpid.target = target.yaw;
+    err = Navigation_NormalizeRad(*arrivedpid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
 
     /* 朝向角误差小于允许误差 → 导航完成，停车进入空闲 */
     if (fabsf(err) < ARRIVED_ERR_THRESH) {
@@ -553,7 +553,7 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
     }
 
     /* 加速度 acc 设为 100，适中刹车力度，既无迟滞拖拽，又不会硬锁死导致轮胎打滑甩尾 */
-    uint8_t acc = 100U;
+    uint8_t acc = 250U;
 
     /* 控制下发：低速死区过滤后发送，同时下发并设置同步标志 */
     Emm_V5_Vel_Control(left_head, left_dir, send_left_rpm, acc, true);
