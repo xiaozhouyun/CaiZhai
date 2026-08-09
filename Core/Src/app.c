@@ -18,7 +18,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_VISION_SEND_TIMEOUT_MS    2000U  /* send 发出后，超过该时间未收到任何 arm 命令则重发 */
 #define APP_VISION_SEND_MAX_ATTEMPTS  4U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
@@ -55,7 +55,7 @@ typedef enum {
     /* 已向 Navigation_Request 下发当前航点，等待 Navigation_IsIdle() 到点。 */
 
     APP_ROUTE_FIRST_WAIT_LIFT,
-    /* 作业点第一视野：已抬升到 10cm，等待 3000ms 后向 +90度转云台。 */
+    /* 作业点第一视野：已抬升到 25cm，等待到位后向 +90度转云台。 */
 
     APP_ROUTE_FIRST_WAIT_GIMBAL,
     /* 云台已转至 +90度，等待 1500ms 给舵机完整转动时间。 */
@@ -67,7 +67,7 @@ typedef enum {
     /* 第一次 send 已发出；等待 ActionScheduler 调用 App_NotifyGrabDone()。 */
 
     APP_ROUTE_SECOND_WAIT_LIFT,
-    /* 第一次视野完成：已再次抬升到 10cm，等待 3000ms 后转向 -90度。 */
+    /* 第一次视野完成：已再次抬升到 25cm，等待到位后转向 -90度。 */
 
     APP_ROUTE_SECOND_WAIT_GIMBAL,
     /* 云台已转至 -90度，等待 1500ms 给舵机完整转动时间。 */
@@ -263,7 +263,7 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
-            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,7,9}, 5, APP_MODE_BACK);
+            App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,8,10}, 5, APP_MODE_BACK);
             //   App_StartRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_BACK);
             break;
         case APP_MODE_BACK:
@@ -326,11 +326,16 @@ static void App_RouteTick(void)
             /* 普通航点或者未开启抓取逻辑时，不需要视觉作业：到点后直接请求下一个航点。 */
             s_route_index++;
         } else {
-            /* 作业点固定执行“抬升至10cm→转向→下降→两次视觉任务”。 */
-            Move_Pos(25.0f);
+            /* 作业点固定执行“抬升至25cm→转向→下降→两次视觉任务”。 */
+            if (now_pos < 23.9f || now_pos > 25.1f) {
+                Move_Pos(25.0f);
+                s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
+                App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
+            } else {
+                s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
+                App_RouteSetDelay(0U);
+            }
             // App_LogLiftTxStatus();
-            s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
-            App_RouteSetDelay(APP_ROUTE_LIFT_SETTLE_MS);
             return;
         }
     } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LIFT) {

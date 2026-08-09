@@ -9,7 +9,7 @@
 #define NAV_PI                    3.1415926f
 
 /* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
-static float align_kp = 2.0f;
+static float align_kp = 3.0f;
 static float align_ki = 0.0f;
 static float align_kd = 0.0f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
@@ -29,7 +29,7 @@ TiancanPid_t anglepid = {
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
 #define ALIGN_MIN_ANGULAR         0.6f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
-#define ALIGN_ERR_THRESH          0.05f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
+#define ALIGN_ERR_THRESH          0.025f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
 
 /* 直线行进控制参数 */
 #define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
@@ -58,7 +58,7 @@ TiancanPid_t movepid = {
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
 
 /* 到达最终角度调整控制参数 */
-static float arrived_kp = 2.0f;
+static float arrived_kp = 3.0f;
 static float arrived_ki = 0.0f;
 static float arrived_kd = 0.0f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
@@ -79,7 +79,7 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_MAX_ANGULAR       1.2f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
 #define ARRIVED_MIN_ANGULAR       0.6f          /**< 终点最小角速度限制 (rad/s)，防止转速过低电机不转 */
 #define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
-#define ARRIVED_ERR_THRESH        0.05f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
+#define ARRIVED_ERR_THRESH        0.025f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
 
 /* 状态机全局变量 */
 Navigation_State_t navigation_state = NAVIGATION_STATE_IDLE;
