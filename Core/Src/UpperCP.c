@@ -329,7 +329,6 @@ void Arm_func(void)
         /* 串口任务只负责解析；耗时动作统一由 StartTask07 的状态机执行。 */
         if ((temp_num >= 0) && (temp_num <= 6)) {
             Vofa_Printf("[ARM_RX] arm=%d -> ActionScheduler\r\n", temp_num);
-            App_NotifyVisionCommandReceived();
             ActionScheduler_RequestVisionArm((uint8_t)temp_num);
         } else {
             Vofa_Printf("[ARM_RX] invalid arm=%d\r\n", temp_num);

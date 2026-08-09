@@ -64,11 +64,6 @@ bool App_IsRunning(void);
 void App_NotifyGrabDone(void);
 
 /**
- * @brief 通知当前航线任务：已收到一条合法视觉 arm 命令。
- */
-void App_NotifyVisionCommandReceived(void);
-
-/**
  * @brief 串口指令接收处理函数，用于解析外部启动/停止指令
  * @param data 接收到的串口数据字节 ('a'/'A' 启动, 't'/'T' 停止)
  */
