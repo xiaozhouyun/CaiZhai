@@ -1,4 +1,5 @@
 #include "key.h"
+#include "app.h"
 
 /**
  * @file    key.c
@@ -36,8 +37,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         else if (GPIO_Pin == key3_Pin)
         {
             /* Key3 按下处理 */
+                s_app_running = true;
+                s_stop_requested = false;
+                App_SetMode(APP_MODE_ROUTE_A);
         }
     }
 }
-
 

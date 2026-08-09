@@ -21,7 +21,7 @@
 #define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_VISION_SEND_TIMEOUT_MS    2000U  /* send 发出后，超过该时间未收到任何 arm 命令则重发 */
-#define APP_VISION_SEND_MAX_ATTEMPTS  3U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
+#define APP_VISION_SEND_MAX_ATTEMPTS  4U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
 #define WAYPOINT_NO_ACT(x, y, yaw)  {(x), (y), (yaw), false}
@@ -44,6 +44,7 @@ static uint8_t s_route_index;
 static AppMode_t s_route_next_mode;
 static uint32_t s_route_deadline;
 static uint8_t s_vision_send_attempts;
+static bool s_vision_command_received;
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -117,23 +118,23 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1900.0f, 10.0f, 0.0f, false),
 };
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1900.0f, 0.0f, 0.0f, false),
+    WAYPOINT(-1900.0f, 10.0f, 0.0f, false),
     WAYPOINT(-1900.0f, 400.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 1900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 2350.0f, 0.0f, false),
     WAYPOINT(-2600.0f, 2350.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1850.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1350.0f, PI, 0),
-    WAYPOINT(-2600.0f, 850.0f, PI, 0),
-    WAYPOINT(-2600.0f, 350.0f, PI, 0),
-    WAYPOINT(-2600.0f, 0.0f, PI, false),
+    WAYPOINT(-2600.0f, 1900.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1400.0f, PI, 0),
+    WAYPOINT(-2600.0f, 900.0f, PI, 0),
+    WAYPOINT(-2600.0f, 400.0f, PI, 0),
+    WAYPOINT(-2600.0f, 10.0f, PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -156,6 +157,7 @@ void App_Init(void)
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
     s_vision_send_attempts = 0U;
+    s_vision_command_received = false;
 }
 
 /**
@@ -213,6 +215,7 @@ void App_RunCurrentMode(void)
         s_route_state = APP_ROUTE_IDLE;
         s_route = NULL;
         s_vision_send_attempts = 0U;
+        s_vision_command_received = false;
         ActionScheduler_Cancel();
         Navigation_Stop();
         return;
@@ -237,7 +240,7 @@ void App_RunCurrentMode(void)
             // Move_Pos(25.0f);
             //   vTaskDelay(pdMS_TO_TICKS(1500U));
                     // 
-        Chassis_SetSpeed(0.0f,-0.6f);
+        Chassis_SetSpeed(0.0f,0.6f);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -266,7 +269,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 0.0f;
+            s_dynamic_route[0].y_mm = 10.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[1].x_mm = 0.0f;
@@ -309,6 +312,7 @@ static void App_RouteTick(void)
         /* 外部停止或非法路线指针时，停止导航并退出路线状态机。 */
         s_route_state = APP_ROUTE_IDLE;
         s_vision_send_attempts = 0U;
+        s_vision_command_received = false;
         Navigation_Stop();
         return;
     }
@@ -366,6 +370,7 @@ static void App_RouteTick(void)
             return;
         }
         s_vision_send_attempts = 0U;
+        s_vision_command_received = false;
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
@@ -404,6 +409,7 @@ static void App_RouteTick(void)
             return;
         }
         s_vision_send_attempts = 0U;
+        s_vision_command_received = false;
         s_route_index++;
         s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     }
@@ -443,12 +449,12 @@ void App_NotifyVisionCommandReceived(void)
 {
     /*
      * 收到任意合法 arm:0~6 都说明 K230/上位机已经响应本次 send。
-     * arm:1/2/3/4 可能只是对准微调，尚未完成抓取，所以这里只刷新等待窗口，
+     * arm:1/2/3/4 可能只是对准微调，尚未完成抓取，所以这里只关闭 send 重试，
      * 不能把 s_grab_done 置位。
      */
     if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST ||
         s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
-        App_RouteSetDelay(APP_VISION_SEND_TIMEOUT_MS);
+        s_vision_command_received = true;
     }
 }
 
@@ -464,6 +470,7 @@ static void App_SendVisionTask(void)
 {
     /* 每发出一次 send 就累计一次，用于超时后判断是否还能继续重发。 */
     s_vision_send_attempts++;
+    s_vision_command_received = false;
 
     /* 请求 K230/上位机处理当前云台视野内的果实，并回传 arm:0~6。 */
     UpperCP_SendTask("send");
@@ -492,6 +499,10 @@ static void App_SendVisionTask(void)
  */
 static bool App_HandleVisionWaitTimeout(void)
 {
+    if (s_vision_command_received) {
+        return false;
+    }
+
     /* 机械动作或云台还在执行时不做超时处理，避免与正在进行的抓取/跳过流程抢状态。 */
     if (ActionScheduler_IsBusy() || ActionScheduler_IsGimbalBusy()) {
         return false;
