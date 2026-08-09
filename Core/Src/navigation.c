@@ -9,7 +9,7 @@
 #define NAV_PI                    3.1415926f
 
 /* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
-static float align_kp = 3.0f;
+static float align_kp = 2.0f;
 static float align_ki = 0.0f;
 static float align_kd = 0.0f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
@@ -58,7 +58,7 @@ TiancanPid_t movepid = {
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
 
 /* 到达最终角度调整控制参数 */
-static float arrived_kp = 3.0f;
+static float arrived_kp = 2.0f;
 static float arrived_ki = 0.0f;
 static float arrived_kd = 0.0f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */

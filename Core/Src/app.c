@@ -20,6 +20,8 @@
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
 #define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
+#define APP_VISION_SEND_TIMEOUT_MS    2000U  /* send 发出后，超过该时间未收到任何 arm 命令则重发 */
+#define APP_VISION_SEND_MAX_ATTEMPTS  3U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
 #define WAYPOINT_NO_ACT(x, y, yaw)  {(x), (y), (yaw), false}
@@ -41,6 +43,7 @@ static uint8_t s_route_len;
 static uint8_t s_route_index;
 static AppMode_t s_route_next_mode;
 static uint32_t s_route_deadline;
+static uint8_t s_vision_send_attempts;
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -137,6 +140,8 @@ static const AppWaypoint_t k_route_c[] = {
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
+static void App_SendVisionTask(void);
+static bool App_HandleVisionWaitTimeout(void);
 
 /**
  * @brief 初始化应用层状态
@@ -150,6 +155,7 @@ void App_Init(void)
     s_grab_done = false;
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
+    s_vision_send_attempts = 0U;
 }
 
 /**
@@ -206,6 +212,7 @@ void App_RunCurrentMode(void)
         s_stop_requested = false;
         s_route_state = APP_ROUTE_IDLE;
         s_route = NULL;
+        s_vision_send_attempts = 0U;
         ActionScheduler_Cancel();
         Navigation_Stop();
         return;
@@ -301,6 +308,7 @@ static void App_RouteTick(void)
     if (!App_IsRunning() || s_route == NULL) {
         /* 外部停止或非法路线指针时，停止导航并退出路线状态机。 */
         s_route_state = APP_ROUTE_IDLE;
+        s_vision_send_attempts = 0U;
         Navigation_Stop();
         return;
     }
@@ -349,13 +357,15 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
+        App_SendVisionTask(); /* 请求相机完成正向云台视野内的果实处理 */
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
          if (!s_grab_done) {
+            (void)App_HandleVisionWaitTimeout();
             return;
         }
+        s_vision_send_attempts = 0U;
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
@@ -385,13 +395,15 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成反向云台视野内的果实处理 */
+        App_SendVisionTask(); /* 请求相机完成反向云台视野内的果实处理 */
         s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
         if (!s_grab_done) {
+            (void)App_HandleVisionWaitTimeout();
             return;
         }
+        s_vision_send_attempts = 0U;
         s_route_index++;
         s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     }
@@ -425,6 +437,85 @@ void App_NotifyGrabDone(void)
 {
     /* 由 ActionScheduler 在动作结束时调用；这里只置位，不能做阻塞操作。 */
     s_grab_done = true;
+}
+
+void App_NotifyVisionCommandReceived(void)
+{
+    /*
+     * 收到任意合法 arm:0~6 都说明 K230/上位机已经响应本次 send。
+     * arm:1/2/3/4 可能只是对准微调，尚未完成抓取，所以这里只刷新等待窗口，
+     * 不能把 s_grab_done 置位。
+     */
+    if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST ||
+        s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
+        App_RouteSetDelay(APP_VISION_SEND_TIMEOUT_MS);
+    }
+}
+
+/**
+ * @brief  向 K230/上位机发送一次视觉处理请求
+ * @note   本函数只负责发送 `send` 与更新等待窗口：
+ *         1. s_vision_send_attempts 记录当前视野已经发送 send 的次数；
+ *         2. UpperCP_SendTask("send") 负责通过 UART5 发出 `send\r\n`；
+ *         3. App_RouteSetDelay() 重新启动本次等待计时。
+ *         后续是否收到 arm 命令、是否完成抓取，都由等待状态机继续判断。
+ */
+static void App_SendVisionTask(void)
+{
+    /* 每发出一次 send 就累计一次，用于超时后判断是否还能继续重发。 */
+    s_vision_send_attempts++;
+
+    /* 请求 K230/上位机处理当前云台视野内的果实，并回传 arm:0~6。 */
+    UpperCP_SendTask("send");
+
+    /* 调试输出：上板时可用来确认下位机是否真的重发了 send。 */
+    Vofa_Printf("[VISION_WAIT] send attempt=%u\r\n", (unsigned int)s_vision_send_attempts);
+
+    /* 从本次 send 发出时刻开始，重新计算等待 arm 命令的超时时间。 */
+    App_RouteSetDelay(APP_VISION_SEND_TIMEOUT_MS);
+}
+
+/**
+ * @brief  处理等待视觉 arm 命令期间的超时保护
+ * @return true  本次调用已经执行了重发 send 或安全跳过动作
+ * @return false 当前还不能处理超时，需要继续等待
+ *
+ * @note   触发条件：
+ *         - 当前处于 APP_ROUTE_WAIT_GRAB_FIRST / SECOND 等待状态；
+ *         - s_grab_done 仍为 false；
+ *         - 当前没有抓取/云台动作正在执行；
+ *         - APP_VISION_SEND_TIMEOUT_MS 已到期。
+ *
+ *         处理策略：
+ *         - 未达到 APP_VISION_SEND_MAX_ATTEMPTS：重发 send；
+ *         - 已达到最大次数：投递 arm:5，复用现有跳过流程，避免路线卡死。
+ */
+static bool App_HandleVisionWaitTimeout(void)
+{
+    /* 机械动作或云台还在执行时不做超时处理，避免与正在进行的抓取/跳过流程抢状态。 */
+    if (ActionScheduler_IsBusy() || ActionScheduler_IsGimbalBusy()) {
+        return false;
+    }
+
+    /* 等待窗口还没到期，继续等 K230/上位机回 arm 命令。 */
+    if (!App_RouteDelayExpired()) {
+        return false;
+    }
+
+    /* 未超过最大次数时，优先重发 send，提高偶发丢包时的恢复概率。 */
+    if (s_vision_send_attempts < APP_VISION_SEND_MAX_ATTEMPTS) {
+        App_SendVisionTask();
+        return true;
+    }
+
+    /*
+     * 多次 send 后仍未收到视觉侧命令，按 arm:5 走现有安全跳过流程。
+     * 不直接 s_grab_done=true，避免绕过收臂、抬升、云台停稳等机械保护动作。
+     */
+    Vofa_Printf("[VISION_WAIT] timeout -> arm:5 skip\r\n");
+    ActionScheduler_RequestVisionArm(5U);
+    App_RouteSetDelay(APP_VISION_SEND_TIMEOUT_MS);
+    return true;
 }
 
 /**
