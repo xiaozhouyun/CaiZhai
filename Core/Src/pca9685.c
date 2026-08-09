@@ -14,9 +14,9 @@ extern osMutexId_t duojiI2cHandle;
 #define PCA9685_ALL_LED_OFF_L    0xFCU
 #define PCA9685_PRESCALE_50HZ    121U
 #define PCA9685_I2C_TIMEOUT_MS   20U
-#define PCA9685_270_CENTER_DEG   125.0f /* 零点平移：将原 60° 输入位置设为新 0° 零点 (65.0f + 60.0f) */
-#define PCA9685_270_MIN_DEG     -260.0f /* 270°舵机硬限位下限 (-135° - 125°) */
-#define PCA9685_270_MAX_DEG       10.0f /* 270°舵机硬限位上限 (+135° - 125°) */
+#define PCA9685_270_CENTER_DEG   0.0f   /* 零点平移：0° 即为舵机物理正中位 */
+#define PCA9685_270_MIN_DEG     -135.0f /* 270°舵机限位下限 (-135°) */
+#define PCA9685_270_MAX_DEG      135.0f /* 270°舵机限位上限 (+135°) */
 
 /* 保存 PCA9685 全部 0~15 通道的当前记录角度（初始均为 0.0 度）。 */
 float s_pca9685_180_angles[PCA9685_CHANNEL_COUNT] = {0.0f};
@@ -121,7 +121,7 @@ float PCA9685_Get270Angle(void)
     return s_pca9685_270_angle;
 }
 
-/* 270° 舵机角度控制 (软限位范围：-260.0° 至 +10.0°) */
+/* 270° 舵机角度控制 (软限位范围：-135.0° 至 +135.0°) */
 int32_t PCA9685_Set270Angle(float angle_deg)
 {
     if (angle_deg < PCA9685_270_MIN_DEG)
@@ -191,8 +191,8 @@ int32_t PCA9685_SetAll180Angle(float angle_deg)
 int32_t PCA9685_ResetAllToZero(void)
 {
     /* 通道 0：270° 舵机，走独立角度计算（中心偏移 +65°） */
-    PCA9685_Set270Angle(0.0f);
-    s_pca9685_180_angles[0] = 0.0f;
+    PCA9685_Set270Angle(30.0f);
+    s_pca9685_180_angles[0] = 30.0f;
 
     /* 通道 1~15：180° 舵机，逐个归零 */
     for (uint8_t i = 1U; i < PCA9685_CHANNEL_COUNT; i++)

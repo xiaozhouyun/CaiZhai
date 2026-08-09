@@ -215,17 +215,8 @@ void App_RunCurrentMode(void)
     switch (g_app_mode) {
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
-            // ActionScheduler_StartGimbalMove(-90.0f, 1500U);
-        //    Move_Pos(10.0f);
-        //    vTaskDelay(pdMS_TO_TICKS(2000U));
-        //        Move_Pos(2.0f);
-        //    vTaskDelay(pdMS_TO_TICKS(2000U));
-        //         Move_Pos(15.0f);
-        //    vTaskDelay(pdMS_TO_TICKS(2000U));
-            // Move_Pos(25.0f);
-            //   vTaskDelay(pdMS_TO_TICKS(1500U));
-                    // 
-        Chassis_SetSpeed(0.0f,0.6f);
+        // Chassis_SetSpeed(0.0f,0.6f);
+        PCA9685_Set270Angle(30.0f); /* 云台转向正前方 */
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -246,6 +237,8 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* C 区规划函数只负责生成静态路线并启动状态机，不再同步跑完整条路线。 */
+            UpperCP_SendTask("scan"); /* 请求上位机扫描 C 区果实二维码并返回规划结果 */
+            PCA9685_Set270Angle(10.0f); /* 云台转向正前方 */
             App_RouteC_PlanAndRun(0, (const uint8_t[]){2,4,8,10}, 5, APP_MODE_BACK);
             //   App_StartRoute(k_route_c, APP_ROUTE_LEN(k_route_c), APP_MODE_BACK);
             break;
