@@ -124,12 +124,12 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1900.0f, 900.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 1400.0f, 0.0f, 0),
     WAYPOINT(-1900.0f, 1900.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 2400.0f, 0.0f, false),
-    WAYPOINT(-2600.0f, 2400.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1900.0f, PI, 0),
-    WAYPOINT(-2600.0f, 1400.0f, PI, 0),
-    WAYPOINT(-2600.0f, 900.0f, PI, 0),
-    WAYPOINT(-2600.0f, 400.0f, PI, 0),
+    WAYPOINT(-1900.0f, 2350.0f, 0.0f, false),
+    WAYPOINT(-2600.0f, 2350.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1850.0f, PI, 0),
+    WAYPOINT(-2600.0f, 1350.0f, PI, 0),
+    WAYPOINT(-2600.0f, 850.0f, PI, 0),
+    WAYPOINT(-2600.0f, 350.0f, PI, 0),
     WAYPOINT(-2600.0f, 0.0f, PI, false),
 };
 
@@ -264,7 +264,7 @@ void App_RunCurrentMode(void)
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[1].x_mm = 0.0f;
             s_dynamic_route[1].y_mm = 0.0f;
-            s_dynamic_route[1].yaw_rad = 0.0f;         /* 到达起点原点后旋转恢复初始朝向 (0°) */
+            s_dynamic_route[1].yaw_rad = PI / 2.0f;    /* 到达起点原点后保持+X方向，不再恢复初始朝向 */
             s_dynamic_route[1].has_action = false;
             App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;
@@ -360,10 +360,17 @@ static void App_RouteTick(void)
             return;
         }
 
-        /* 由 Task07 线性插补到反向视野，不能直接跳到 -90度。 */
-        ActionScheduler_StartGimbalMove(-90.0f, 1200U);
-        s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
-        App_RouteSetDelay(400U);
+        /* 由 Task07 线性插补到反向视野，不能直接跳到 -90度。
+         * 但如果之前跳过逻辑已经把云台转到了 -90°，直接下降升降台即可。 */
+        if (PCA9685_Get180Angle(7U) < -75.0f) {
+            Move_Pos(2.0f);
+            s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
+            App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
+        } else {
+            ActionScheduler_StartGimbalMove(-90.0f, 1200U);
+            s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
+            App_RouteSetDelay(400U);
+        }
         return;
     } else if (s_route_state == APP_ROUTE_SECOND_WAIT_GIMBAL) {
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
