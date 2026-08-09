@@ -234,8 +234,6 @@ void StartDefaultTask(void *argument)
       Emm_V5_En_Control(5, true, true);
       Emm_V5_Synchronous_motion(0);
       Navigation_Stop();
-//      Chassis_SetSpeed(0.0f,-0.6f);
-//              Move_Pos(25.0f);
              vTaskDelay(pdMS_TO_TICKS(2000U));
 //        s_app_running = true;
 //        s_stop_requested = false;

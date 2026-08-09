@@ -20,8 +20,8 @@
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
 #define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
-#define APP_VISION_SEND_TIMEOUT_MS    2000U  /* send 发出后，超过该时间未收到任何 arm 命令则重发 */
-#define APP_VISION_SEND_MAX_ATTEMPTS  4U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
+#define APP_VISION_SEND_TIMEOUT_MS    10000U  /* send 发出后，超过该时间未收到任何 arm 命令则重发 */
+#define APP_VISION_SEND_MAX_ATTEMPTS  1U     /* 每个视野最多发送 send 的次数，超过后走安全跳过 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
 #define WAYPOINT_NO_ACT(x, y, yaw)  {(x), (y), (yaw), false}
@@ -103,12 +103,6 @@ static void App_LogLiftTxStatus(void)
     Emm_TxStatus_t tx_status;
 
     Emm_GetTxStatus(&tx_status);
-    // Vofa_Printf("[LIFT_WAIT] tx_start=%lu tx_done=%lu busy=%u pending=%u drops=%lu\r\n",
-    //             (unsigned long)tx_status.start_count,
-    //             (unsigned long)tx_status.complete_count,
-    //             (unsigned int)tx_status.busy,
-    //             (unsigned int)tx_status.pending,
-    //             (unsigned long)Emm_GetTxDropCount());
 }
 
 /* 航线 A 的目标路径点序列 */
@@ -118,7 +112,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
-    WAYPOINT(-1900.0f, 10.0f, 0.0f, false),
+    WAYPOINT(-2600.0f, 10.0f, 0.0f, false),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -251,8 +245,6 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
-            //     Move_Pos(25.0f);
-            //   vTaskDelay(pdMS_TO_TICKS(3000U));
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
             break;
