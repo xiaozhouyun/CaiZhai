@@ -36,7 +36,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         else if (GPIO_Pin == key3_Pin)
         {
             /* Key3 按下处理 */
-            Chassis_SetSpeed(0.0f,0.5f);
         }
     }
 }

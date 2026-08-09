@@ -389,7 +389,6 @@ void StartTask07(void *argument)
   for(;;)
   {
     /* 两个状态机均为单步推进；15ms 是严格的动作时间基准，不得在其中阻塞。 */
-    // Key_Scan();
     App_RunCurrentMode();
     ActionScheduler_Tick();
     

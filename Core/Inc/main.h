@@ -69,9 +69,9 @@ void Error_Handler(void);
 #define key1_Pin GPIO_PIN_9
 #define key1_GPIO_Port GPIOB
 #define key1_EXTI_IRQn EXTI9_5_IRQn
-#define key3_Pin GPIO_PIN_0
+#define key3_Pin GPIO_PIN_1
 #define key3_GPIO_Port GPIOE
-#define key3_EXTI_IRQn EXTI0_IRQn
+#define key3_EXTI_IRQn EXTI1_IRQn
 
 /* USER CODE BEGIN Private defines */
 
