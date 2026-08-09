@@ -12,9 +12,14 @@ typedef enum {
     APP_MODE_TEST,      /**< 测试模式：用于调试和测试功能，可能包含自定义的测试逻辑 */
     APP_MODE_ROUTE_A,   /**< 航线 A 模式：执行第一阶段的路径导航（例如向深处前行） */
     APP_MODE_ROUTE_B,   /**< 航线 B 模式：预留模式 */
+    APP_MODE_SCAN_C,    /**< C 区扫码模式：发送 scan 后等待二维码或 10 秒超时 */
     APP_MODE_ROUTE_C,   /**< 航线 C 模式：执行第二阶段的路径导航（例如折返或区域内作业） */
     APP_MODE_BACK       /**< 返回模式：执行返回动作，例如回到起始点 */
 } AppMode_t;
+
+#define APP_ACTION_NONE      0x00U
+#define APP_ACTION_POSITIVE  0x01U
+#define APP_ACTION_NEGATIVE  0x02U
 
 /**
  * @brief 路径点（航点）结构体
@@ -24,6 +29,7 @@ typedef struct {
     float y_mm;         /**< 目标点 Y 坐标，单位：毫米 */
     float yaw_rad;      /**< 目标点朝向角，单位：弧度 */
     bool has_action;    /**< 是否在到达目标点后执行舵机动作 (true/false) */
+    uint8_t action_mask;/**< 云台作业方向：APP_ACTION_POSITIVE/NEGATIVE 位组合 */
 } AppWaypoint_t;
 
 /* 全局应用模式变量，由导航任务或串口控制修改 */
@@ -73,7 +79,7 @@ void vofaRxbyte(uint8_t data);
  * @brief  C区环形拓扑多目标点最短路径规划与导航执行函数
  * @details C区环形轨道拓扑结构示意图：
  * 
- *               (y = 2450)
+ *               (y = 2350)
  *      [6] <------------------ [5]
  *       |                       |
  *      [7]                     [4]
@@ -86,17 +92,15 @@ void vofaRxbyte(uint8_t data);
  *       |                       |
  *      [11] -----------------> [0]
  *               (y = 0)
- *   (x = -2700)             (x = -1900)
+ *   (x = -2600)             (x = -1900)
  * 
- *          根据当前节点与待访问目标节点列表，自动对比顺时针/逆时针巡航的总路程，
+ *          从固定入口节点 11 出发，根据水果位置自动对比顺时针/逆时针巡航的总路程，
  *          选取最短路径生成过渡航点与作业动作，并驱动小车完成自动化巡航。
- * @param  start_node_idx 起始节点编号 (0 ~ 11)
- * @param  target_nodes   待访问的目标节点编号数组
- * @param  num_targets    目标节点数量
+ * @param  fruit_positions 8 个水果位置编号数组，每项范围为 1 ~ 12
  * @param  next_mode      完成后跳转的下一个模式
  * @return 0 成功启动，-1 参数错误
  */
-int32_t App_RouteC_PlanAndRun(uint8_t start_node_idx, const uint8_t *target_nodes,
-                              uint8_t num_targets, AppMode_t next_mode);
+int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
+                              AppMode_t next_mode);
 
 #endif

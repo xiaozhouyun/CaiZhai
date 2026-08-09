@@ -19,6 +19,7 @@ void UpperCP_UartDmaRxProcess(void);
 uint32_t UpperCP_GetRxOverflowCount(void);
 uint32_t UpperCP_GetUartErrorCount(void);
 void UpperCP_SendTask(const char *task);
+void UpperCP_ResetQrResult(void);
 const char *UpperCP_GetLastCommand(void);
 uint32_t UpperCP_GetRxCount(void);
 uint8_t UpperCP_GetLastByte(void);

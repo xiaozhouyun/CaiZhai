@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define UPPERCP_RX_BUF_LEN 128U
@@ -189,6 +190,12 @@ uint8_t fruits[8] = {4,3,1,10,8,9,2,11};
 
 uint8_t fruits_count = 0;
 
+void UpperCP_ResetQrResult(void)
+{
+    fruits_count = 0U;
+    CameraFlag = 0U;
+}
+
 void UpperCP_RX(void)
 {
     uint8_t command_ready = 0U;
@@ -339,20 +346,37 @@ void Arm_func(void)
 void ErWeiMa_func(void)
 {
     if (strncmp(ret, "QR", 2) == 0) {
-        float temp_num = 0.0f;
+        uint8_t parsed[8];
+        uint8_t seen[13] = {0U};
         char *p_num;
         uint8_t i = 0U;
+        uint8_t valid = 1U;
 
         for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
-            sscanf(p_num, "%f", &temp_num);
-            if (i < 8U) {
-                fruits[i++] = (uint8_t)temp_num;
+            char *end;
+            long value;
+
+            if (i >= 8U) {
+                valid = 0U;
+                break;
             }
+
+            value = strtol(p_num, &end, 10);
+            if ((end == p_num) || (*end != '\0') ||
+                (value < 1L) || (value > 12L) || seen[value] != 0U) {
+                valid = 0U;
+                break;
+            }
+
+            parsed[i++] = (uint8_t)value;
+            seen[value] = 1U;
         }
 
-        fruits_count = i;
-        CameraFlag = 1U;
-
+        if ((valid != 0U) && (i == 8U)) {
+            memcpy(fruits, parsed, sizeof(fruits));
+            fruits_count = 8U;
+            CameraFlag = 1U;
+        }
     }
 }
 

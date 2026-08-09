@@ -585,7 +585,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_SKIP_WAIT_EXTEND:
         /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
-        Move_Pos(25.0f);
+        Move_Pos(27.0f);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("SKIP_LIFT", 5U);
