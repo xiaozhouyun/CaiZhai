@@ -18,7 +18,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1000U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 10cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act)}
@@ -241,8 +241,8 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
-                Move_Pos(25.0f);
-              vTaskDelay(pdMS_TO_TICKS(3000U));
+            //     Move_Pos(25.0f);
+            //   vTaskDelay(pdMS_TO_TICKS(3000U));
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_ROUTE_C);
             break;

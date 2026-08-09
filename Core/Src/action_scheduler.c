@@ -9,6 +9,24 @@
 #include "cmsis_os.h"
 #include <math.h>
 
+/*
+ * action_scheduler.c
+ *
+ * 本文件只负责“视觉抓取相关机械动作”的非阻塞调度：
+ * - K230/上位机通过 UpperCP 发来的 arm 命令进入 ActionScheduler_RequestVisionArm()；
+ * - StartTask07 周期调用 ActionScheduler_Tick()，按状态机逐步推进夹爪、伸缩臂、升降台、云台；
+ * - 每个阶段只下发一次硬件命令，然后用 HAL_GetTick() 形成软等待，不在 Tick 主流程里长时间阻塞；
+ * - 动作完成后调用 App_NotifyGrabDone()，让 app.c 的路线状态机继续走下一个航点。
+ *
+ * 这里刻意不接管导航、路线选择和视觉识别，只把“收到某个 arm 命令后机构该怎么动”
+ * 收敛在一个文件里，避免 app.c 同时塞进大量舵机/升降台时序细节。
+ */
+
+/*
+ * 伸缩臂通道6的线性标定参数。
+ * 当前约定：-80° 对应完全收回，+25° 对应最大伸出约 300mm。
+ * ActionScheduler_SetExtendCm() 会把“再伸出多少 cm”换算成通道6目标角度。
+ */
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
 #define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)
@@ -32,71 +50,78 @@
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
 
 /*
- * 抓取动作状态机说明：
+ * 抓取动作状态机总体节奏：
  * 1. 上位机收到 arm 命令后只调用 ActionScheduler_RequestVisionArm() 投递动作；
  * 2. StartTask07 每 20ms 调用一次 ActionScheduler_Tick()；
  * 3. 每个 WAIT 状态只在截止时间到达时执行一次“下一个动作”，然后切换状态；
  * 4. 因此等待期间 Task07 会立即返回，不会占住串口、导航和 OLED 等其他任务。
+ *
+ * arm 命令约定：
+ * - arm:0 正常果抓取：测距 -> 开爪 -> 伸臂 -> 闭爪 -> 收臂/抬升/回中/放果；
+ * - arm:1/2 视觉水平微调：云台每次小角度左/右转，超过极限后底盘前移重新找目标；
+ * - arm:3/4 视觉垂直微调：升降台上/下移动 1cm；
+ * - arm:5 跳过目标：不抓取，执行收臂、抬升、云台切视野/回中，然后通知路线继续；
+ * - arm:6 坏果处理：按坏果流程夹取/释放，再复用通用放置复位流程。
  */
 typedef enum {
     ACTION_IDLE,
     /* 无正在执行的抓取/复位动作；允许接收下一条 arm:0~6 命令。 */
 
     ACTION_GRAB_WAIT_DISTANCE,
-    /* arm:0 已调用 get_dis()；等待 100ms 后读取最新 TofData，并开始开爪。 */
+    /* arm:0 已调用 get_dis()；等待 ARM_TOF_SETTLE_MS 后读取最新 TofData，并开始开爪。 */
 
     ACTION_GRAB_WAIT_OPEN,
-    /* 正常抓取已下发通道5=-30度开爪；等待 800ms，避免伸臂时碰撞夹爪。 */
+    /* 正常抓取已下发通道5=-30度开爪；等待 ARM_CLAW_OPEN_MS，避免伸臂时碰撞夹爪。 */
 
     ACTION_GRAB_WAIT_CLOSE,
-    /* 已按 TofData/10-1cm 下发通道6伸臂角度；等待 100ms 后执行闭爪。 */
+    /* 已按 TofData 换算并下发通道6伸臂角度；等待 ARM_EXTEND_SETTLE_MS 后执行闭爪。 */
 
     ACTION_GRAB_WAIT_GRIP,
-    /* 已下发通道5=3度闭爪；等待 800ms，确保果实夹紧后才允许转运。 */
+    /* 已下发通道5=3度闭爪；等待 ARM_CLAW_CLOSE_MS，确保果实夹紧后才允许转运。 */
 
     ACTION_PUT_WAIT_LIFT,
-    /* 已升到 10cm 安全高度；等待 3000ms 后把通道7云台转回 0度中位。 */
+    /* 已下发升降台到安全高度的命令；等待 ARM_PUT_LIFT_SETTLE_MS 后把通道7云台转回 0度中位。 */
 
     ACTION_PUT_WAIT_EXTEND,
-    /* 伸缩臂已收回；下发升到 10cm 的命令。 */
+    /* 已下发通道6收臂；等待 ARM_RETRACT_SETTLE_MS 后再下发升降台抬升命令。 */
 
     ACTION_PUT_WAIT_ROTATE,
-    /* 云台已回中；等待 500ms 后开爪，避免在转动过程中释放果实。 */
+    /* 云台正在回中或刚回中；等待插补结束和 ARM_GIMBAL_SETTLE_MS 后开爪。 */
 
     ACTION_PUT_WAIT_OPEN,
-    /* 已下发开爪；等待 1000ms 让果实离爪，然后通知路线执行下一步。 */
+    /* 已下发开爪；等待 ARM_CLAW_RELEASE_MS 让果实离爪，然后通知路线执行下一步。 */
 
     ACTION_SKIP_WAIT_LIFT,
-    /* arm:5 或对准失败：已升到 5cm 安全高度；等待 2000ms 后收臂。 */
+    /* arm:5 或对准失败：已下发升降台抬升；等待到位后再执行跳过视野切换。 */
 
     ACTION_SKIP_WAIT_EXTEND,
-    /* 跳过目标时伸缩臂已收回；等待 1000ms 后将云台转回 0度。 */
+    /* 跳过目标时已下发收臂；等待 ARM_RETRACT_SETTLE_MS 后升降台抬升。 */
 
     ACTION_SKIP_WAIT_ROTATE,
-    /* 跳过目标时云台已回中；等待 200ms 后通知路线跳至下一个任务。 */
+    /* 跳过目标时云台正在切视野或回中；插补完成并停稳后通知路线跳至下一个任务。 */
 
     ACTION_BAD_WAIT_DISTANCE,
-    /* arm:6 已触发测距；等待 500ms 后按 TofData/10-2cm 伸臂并闭爪。 */
+    /* arm:6 已触发测距；等待 ARM_BAD_TOF_SETTLE_MS 后按 TofData 伸臂并闭爪。 */
 
     ACTION_BAD_WAIT_CLOSE,
-    /* 坏果已夹紧；等待 800ms 后开爪，维持原坏果处理的动作节拍。 */
+    /* 坏果已夹紧；等待 ARM_CLAW_CLOSE_MS 后开爪，维持原坏果处理的动作节拍。 */
 
     ACTION_BAD_WAIT_OPEN
-    /* 坏果夹爪已打开；等待 800ms 后进入通用放置/复位流程。 */
+    /* 坏果夹爪已打开；等待 ARM_BAD_RELEASE_SETTLE_MS 后进入通用放置/复位流程。 */
 } ActionState_t;
 
-static ActionState_t s_state;       /* 当前动作阶段 */
-static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基 */
-static uint8_t s_retry_count;       /* 云台到左右极限后的前移次数 */
-static bool s_gimbal_moving;        /* 通道7是否正在执行非阻塞匀速轨迹 */
-static bool s_gimbal_lift_pending;  /* 云台转动前，是否仍在等待升降台到 10cm */
-static float s_gimbal_start_angle;  /* 本次轨迹起始角度 */
-static float s_gimbal_target_angle; /* 本次轨迹目标角度 */
-static uint32_t s_gimbal_start_tick;/* 本次轨迹起始时刻 */
-static uint32_t s_gimbal_duration;  /* 本次轨迹总时长 */
+static ActionState_t s_state;       /* 当前动作阶段；由 ActionScheduler_Tick() 根据 s_deadline 推进 */
+static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基；统一用有符号差值判断是否到期 */
+static uint8_t s_retry_count;       /* 云台到左右极限后的前移次数；过多仍未对准则放弃当前目标 */
+static bool s_gimbal_moving;        /* 通道7是否正在执行非阻塞匀速轨迹；由 GimbalTick 分帧插补 */
+static bool s_gimbal_lift_pending;  /* 云台转动前，是否仍在等待升降台到 10cm，防止大角度转动撞机构 */
+static float s_gimbal_start_angle;  /* 本次云台插补轨迹起始角度，来自 PCA9685_Get180Angle(7U) */
+static float s_gimbal_target_angle; /* 本次云台插补轨迹目标角度，单位：度 */
+static uint32_t s_gimbal_start_tick;/* 本次云台插补轨迹起始时刻 */
+static uint32_t s_gimbal_duration;  /* 本次云台插补轨迹总时长，单位：ms */
 static uint32_t s_gimbal_lift_deadline; /* 升至10cm后允许开始转云台的时刻 */
-static bool s_pending_command_valid; /* 忙碌期间缓存的一条关键视觉命令 */
-static uint8_t s_pending_command;    /* 仅缓存 arm:0 / arm:5 / arm:6 */
+static bool s_pending_command_valid; /* 忙碌期间是否缓存了一条关键视觉命令 */
+static uint8_t s_pending_command;    /* 仅缓存 arm:0 / arm:5 / arm:6，普通微调命令忙时直接丢弃 */
 
 /* 仅在收到命令或切换动作阶段时输出，避免在 20ms Tick 中连续刷屏。 */
 static const char *ActionScheduler_StateName(ActionState_t state)
@@ -123,6 +148,12 @@ static const char *ActionScheduler_StateName(ActionState_t state)
 
 static void ActionScheduler_Debug(const char *event, uint8_t command)
 {
+    /*
+     * 调试输出集中放在这里，方便串口上观察：
+     * - event：当前发生的动作节点；
+     * - state/busy：软件状态机是否还占用机构；
+     * - gimbal/retry/updown/tof：定位视觉和机构联动问题时最常看的现场量。
+     */
     Vofa_Printf("[ARM_DBG] %s cmd=%u state=%s busy=%u gimbal=%.1f retry=%u updown=%u tof=%.1f\r\n",
                 event,
                 command,
@@ -145,6 +176,10 @@ static void ActionScheduler_GimbalTick(void)
     float angle;
 
     if (s_gimbal_lift_pending) {
+        /*
+         * 大范围转云台前先等升降台到安全高度。
+         * 等待期间不改变通道7角度，避免升降台未到位时云台先扫过去碰到机构。
+         */
         if ((int32_t)(HAL_GetTick() - s_gimbal_lift_deadline) < 0) {
             return;
         }
@@ -159,6 +194,10 @@ static void ActionScheduler_GimbalTick(void)
         return;
     }
 
+    /*
+     * 线性插补：每个 Tick 按 elapsed/duration 算一个中间角度。
+     * 这样云台转动速度可控，也不会像 Smooth 接口那样在内部 vTaskDelay 阻塞任务。
+     */
     elapsed = HAL_GetTick() - s_gimbal_start_tick;
     if (elapsed >= s_gimbal_duration) {
         (void)PCA9685_Set180Angle(7U, s_gimbal_target_angle);
@@ -187,7 +226,10 @@ static void ActionScheduler_SetDeadline(uint32_t delay_ms)
 
 void ActionScheduler_SetExtendCm(float distance_cm)
 {
-    /* 通道6角度与伸出距离线性对应：-80度为 0mm，+25度为 300mm。 */
+    /*
+     * 在“当前伸出量”的基础上再移动 distance_cm。
+     * 注意这里不是设置绝对伸出长度，而是通过当前角度反推已伸出距离，再叠加目标增量。
+     */
     float current = PCA9685_Get180Angle(6U);
     float dist_mm = (current - ARM_EXTEND_MIN_ANGLE_DEG)
                   / ARM_EXTEND_TOTAL_RANGE_DEG * ARM_EXTEND_TOTAL_RANGE_MM;
@@ -216,6 +258,7 @@ static void ActionScheduler_StartPut(ActionState_t first_state)
     /*
      * 放置顺序必须是：先收缩臂 -> 再抬升10cm -> 最后转云台。
      * 收缩臂命令先下发，等待其完成后才允许升降台动作。
+     * first_state 用来复用同一套“收臂后的流程入口”，正常果和坏果都走这里。
      */
     (void)PCA9685_Set180Angle(6U, -80.0f);
     s_state = first_state;
@@ -279,6 +322,11 @@ void ActionScheduler_Cancel(void)
  */
 static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint32_t duration_ms, bool lift_before_move)
 {
+    /*
+     * 内部接口把“是否需要先安全抬升”显式传进来：
+     * - 路线切换/放置回中等大动作使用 lift_before_move=true；
+     * - 视觉对准的 1° 微调使用 false，避免每一帧微调都把升降台抬走。
+     */
     s_gimbal_target_angle = target_angle_deg;
     s_gimbal_duration = duration_ms;
 
@@ -317,6 +365,11 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
 {
     float gimbal_angle;
 
+    /*
+     * 这是视觉命令进入动作调度器的唯一入口。
+     * 函数本身只做“当前能不能启动新动作”的判断和第一步命令下发；
+     * 后续所有等待与下一步动作都交给 ActionScheduler_Tick()。
+     */
     ActionScheduler_Debug("RX", command);
     if (ActionScheduler_IsBusy()) {
         /*
@@ -335,7 +388,12 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
 
     gimbal_angle = PCA9685_Get180Angle(7U);
     if (command == 1U || command == 2U) {
-        /* 1/2 仅做视觉对准；到极限后以底盘前移重新获得视野。 */
+        /*
+         * arm:1/2 仅做视觉水平对准：
+         * - arm:1 向负方向微调云台；
+         * - arm:2 向正方向微调云台；
+         * - 已到 +/-90° 极限还没对准时，让底盘前移一小段重新获得视野。
+         */
         if ((command == 1U && gimbal_angle <= -90.0f) ||
             (command == 2U && gimbal_angle >= 90.0f)) {
             s_retry_count++;
@@ -367,7 +425,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         /* 目标偏下：升降机构下移 1cm；本命令不进入长动作序列。 */
         Move_down(1.0f);
     } else if (command == 0U) {
-        /* 正常抓取：先触发测距，100ms 后读取 TofData 计算伸臂量。 */
+        /* 正常抓取：先触发测距，等待 ARM_TOF_SETTLE_MS 后读取 TofData 计算伸臂量。 */
         s_retry_count = 0U;
         if (upordownFlag != 0U) {
             /* 树上果当前不执行地面抓取动作，直接让路线继续。 */
@@ -402,6 +460,14 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
     }
 }
 
+/**
+ * @brief 周期推进视觉抓取动作状态机
+ *
+ * @note  调用方应在固定周期任务中反复调用本函数。函数内部遵守三个规则：
+ *        1. 先推进云台插补，因为云台可能与抓取状态等待并行；
+ *        2. 空闲时优先消费忙碌期间缓存的关键 arm 命令；
+ *        3. 当前阶段未到截止时间就直接返回，不阻塞任务、不重复下发同一条硬件命令。
+ */
 void ActionScheduler_Tick(void)
 {
     /* 云台匀速轨迹与抓取状态机并行推进，二者均不会阻塞当前任务。 */
@@ -423,14 +489,14 @@ void ActionScheduler_Tick(void)
 
     switch (s_state) {
     case ACTION_GRAB_WAIT_DISTANCE:
-        /* 测距稳定后开爪，等待爪子张开。 */
+        /* 测距稳定后开爪，等待爪子张开；此时不伸臂，避免爪子未开全就前伸。 */
         (void)PCA9685_Set180Angle(5U, -30.0f);
         s_state = ACTION_GRAB_WAIT_OPEN;
         ActionScheduler_SetDeadline(ARM_CLAW_OPEN_MS);
         ActionScheduler_Debug("GRAB_OPEN", 0U);
         break;
     case ACTION_GRAB_WAIT_OPEN:
-        /* 以当前测距值计算伸臂目标，随后短暂等待机构开始运动。 */
+        /* 以当前测距值计算伸臂目标；TofData 单位按 mm 使用，/10 后换成 cm。 */
         ActionScheduler_SetExtendCm(TofData / 10.0f + 5.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
@@ -468,11 +534,11 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("PUT_CENTER", 0U);
         break;
     case ACTION_PUT_WAIT_ROTATE:
-        /* 云台插补中则等待；插补结束后额外等 ARM_GIMBAL_SETTLE_MS 停稳再开爪 */
+        /* 云台插补中则等待；插补结束后额外等 ARM_GIMBAL_SETTLE_MS 停稳再开爪。 */
         if (ActionScheduler_IsGimbalBusy()) {
             return;
         }
-        /* 首次不忙时设停稳截止，下个 Tick 再放行 */
+        /* 首次检测到不忙时只设置停稳截止，下一轮 Tick 到期后才真正开爪。 */
         if (s_deadline == 0U) {
             ActionScheduler_SetDeadline(ARM_GIMBAL_SETTLE_MS);
             return;
@@ -489,7 +555,12 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_SKIP_WAIT_LIFT:
-        /* 已升到10cm，根据当前云台角度决定跳过时的转动目标。 */
+        /*
+         * 已升到安全高度，根据当前云台角度决定跳过时的转动目标：
+         * - 当前在 +90° 附近，转到 -90°，等价于切到另一侧视野；
+         * - 当前在 -90° 附近，说明另一侧也看过，回中；
+         * - 当前接近中位，保持/回到中位即可。
+         */
         {
             float cur = PCA9685_Get180Angle(7U);
             float target;
