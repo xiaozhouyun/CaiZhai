@@ -191,8 +191,8 @@ int32_t PCA9685_SetAll180Angle(float angle_deg)
 int32_t PCA9685_ResetAllToZero(void)
 {
     /* 通道 0：270° 舵机，走独立角度计算（中心偏移 +65°） */
-    PCA9685_Set270Angle(30.0f);
-    s_pca9685_180_angles[0] = 30.0f;
+    PCA9685_Set270Angle(35.0f);
+    s_pca9685_180_angles[0] = 35.0f;
 
     /* 通道 1~15：180° 舵机，逐个归零 */
     for (uint8_t i = 1U; i < PCA9685_CHANNEL_COUNT; i++)

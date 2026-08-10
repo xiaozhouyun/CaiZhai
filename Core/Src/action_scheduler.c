@@ -331,8 +331,8 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     s_gimbal_duration = duration_ms;
 
     /* 第一步：防碰撞安全抬升。仅大范围转场需要先升至 10cm，视觉微调保持原高度。 */
-    if (lift_before_move && (now_pos < 9.9f || now_pos > 10.1f)) {
-        Move_Pos(25.0f);
+    if (lift_before_move && (now_pos < 26.9f || now_pos > 27.1f)) {
+        Move_Pos(27.0f);
         osDelay(500U);
         s_gimbal_lift_deadline = HAL_GetTick() + ARM_PUT_LIFT_SETTLE_MS;
         s_gimbal_lift_pending = true;
@@ -516,7 +516,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_PUT_WAIT_EXTEND:
         /* 伸缩臂完全收回后，升降台抬升到10cm。 */
-        Move_Pos(25.0f);
+        Move_Pos(27.0f);
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("PUT_LIFT", 0U);

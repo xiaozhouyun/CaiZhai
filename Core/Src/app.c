@@ -19,7 +19,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1500U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      1800U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
@@ -225,7 +225,8 @@ void App_RunCurrentMode(void)
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
         // Chassis_SetSpeed(0.0f,0.6f);
-        PCA9685_Set270Angle(30.0f); /* 云台转向正前方 */
+      
+         ActionScheduler_StartGimbalMove(90.0f, 1000U);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -256,7 +257,7 @@ void App_RunCurrentMode(void)
 
             if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
                 ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
-                  PCA9685_Set270Angle(30.0f);
+                  PCA9685_Set270Angle(35.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             }
             break;
@@ -364,7 +365,7 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
-        Move_Pos(3.0f);
+        Move_Pos(2.0f);
         s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
@@ -392,7 +393,7 @@ static void App_RouteTick(void)
             /* 由 Task07 线性插补到反向视野，不能直接跳到 -90度。
              * 但如果之前跳过逻辑已经把云台转到了 -90°，直接下降升降台即可。 */
             if (PCA9685_Get180Angle(7U) < -75.0f) {
-                Move_Pos(3.0f);
+                Move_Pos(2.0f);
                 s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
                 App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
             } else {
@@ -407,7 +408,7 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
-        Move_Pos(3.0f);
+        Move_Pos(2.0f);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
