@@ -111,7 +111,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 2200.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
     WAYPOINT(-2600.0f, 10.0f, PI/2, false),
 };
@@ -125,10 +125,10 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1900.0f, 1900.0f, PI, 0),
     WAYPOINT(-1900.0f, 2350.0f, PI, false),
     WAYPOINT(-2600.0f, 2350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1900.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1400.0f, 0, 0),
-    WAYPOINT(-2600.0f, 900.0f, 0, 0),
-    WAYPOINT(-2600.0f, 400.0f, 0, 0),
+    WAYPOINT(-2600.0f, 1850.0f, 0, 0),
+    WAYPOINT(-2600.0f, 1350.0f, 0, 0),
+    WAYPOINT(-2600.0f, 850.0f, 0, 0),
+    WAYPOINT(-2600.0f, 350.0f, 0, 0),
     WAYPOINT(-2600.0f, 10.0f, 0, false),
 };
 
@@ -257,7 +257,7 @@ void App_RunCurrentMode(void)
 
             if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
                 ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
-                  PCA9685_Set270Angle(35.0f);
+                  PCA9685_Set270Angle(30.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             }
             break;
