@@ -113,7 +113,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, 0.0f, 0),
-    WAYPOINT(-2600.0f, 10.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 10.0f, -PI/2, false),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -248,10 +248,11 @@ void App_RunCurrentMode(void)
         case APP_MODE_SCAN_C:
             if (!s_qr_scan_started) {
                 UpperCP_ResetQrResult();
-                PCA9685_Set270Angle(60.0f); /* 二维码相机转向正前方 */
+                PCA9685_Set270Angle(60.0f); /* 二维码相机初始转向 60° 位置 */
                 UpperCP_SendTask("scan");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_TIMEOUT_MS;
                 s_qr_scan_started = true;
+                PCA9685_Set270AngleSmooth(50.0f, 100U, 20U); /* 270度舵机从 60° 匀速平滑转动到 50°，辅助相机扫描二维码 */
                 break;
             }
 
@@ -429,8 +430,8 @@ static void App_RouteTick(void)
     }
 
     if (s_route_index < s_route_len) {
-        /* 仅在 A 区最后一个抓果点完成、向 (0,0) 起点倒车时(索引为 4)开启自动倒车；其他航点保持关闭正向前进 */
-        if (s_route == k_route_a && s_route_index == 4U) {
+        /* 在 A 区向 (0,0) 起点倒车(索引为 4)及前往 (-2600, 10) 航点(索引为 5)时开启自动倒车；其他航点保持关闭正向前进 */
+        if (s_route == k_route_a && (s_route_index == 4U || s_route_index == 5U)) {
             g_enable_auto_reverse = true;
         } else {
             g_enable_auto_reverse = false;
