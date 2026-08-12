@@ -32,11 +32,11 @@ TiancanPid_t anglepid = {
 #define ALIGN_ERR_THRESH          0.025f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
 
 /* 直线行进控制参数 */
-#define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
+#define MOVE_LINEAR_SPEED         300.0f        /**< 第一轮纠偏调试降低直线速度，减小惯性对调参判断的干扰 */
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
-static float move_kp = 3.5f;                    /**< 提高航向纠偏响应敏捷度，小角度偏差即刻修正 */
+static float move_kp = 4.5f;                    /**< 加强直线行驶时的小角度航向纠偏 */
 static float move_ki = 0.0f;
-static float move_kd = 0.2f;
+static float move_kd = 0.0f;                    /**< HWT101 为 10Hz，首轮调试先关闭微分项，避免新帧跳变脉冲 */
 static float move_target = 0.0f;  /**< 直线行进航偏纠偏目标朝向 (rad) */
 
 /** 
