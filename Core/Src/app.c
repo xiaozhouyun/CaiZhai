@@ -141,10 +141,10 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1900.0f, 1900.0f, PI, 0),
     WAYPOINT(-1900.0f, 2350.0f, PI, false),
     WAYPOINT(-2600.0f, 2350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1850.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 850.0f, 0, 0),
-    WAYPOINT(-2600.0f, 350.0f, 0, 0),
+    WAYPOINT(-2600.0f, 1900.0f, 0, 0),
+    WAYPOINT(-2600.0f, 1400.0f, 0, 0),
+    WAYPOINT(-2600.0f, 900.0f, 0, 0),
+    WAYPOINT(-2600.0f, 400.0f, 0, 0),
     WAYPOINT(-2600.0f, 10.0f, 0, false),
 };
 
