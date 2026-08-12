@@ -12,6 +12,7 @@
 #include "cmsis_os.h"
 #include "vofa.h"
 #include <math.h>
+#include <stdio.h>
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -24,11 +25,12 @@
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
-                                     ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE)}
+                                     ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE), \
+                                     0U, 0U}
 #define WAYPOINT_NO_ACT(x, y, yaw)  WAYPOINT((x), (y), (yaw), false)
 #define WAYPOINT_ACT(x, y, yaw)     WAYPOINT((x), (y), (yaw), true)
 #define WAYPOINT_SIDE(x, y, yaw, action) \
-    {(x), (y), (yaw), true, (action)}
+    {(x), (y), (yaw), true, (action), 0U, 0U}
 
 /* 当前系统的全局应用模式 */
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
@@ -150,7 +152,7 @@ static const AppWaypoint_t k_route_c[] = {
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
-static void App_SendVisionTask(void);
+static void App_SendVisionTask(uint8_t position);
 
 /**
  * @brief 初始化应用层状态
@@ -258,11 +260,11 @@ void App_RunCurrentMode(void)
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 10.0f, PI / 2.0f,
-                                                  false, APP_ACTION_NONE};
+                                                  false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[1] = (AppWaypoint_t){-1500.0f, 10.0f, 0.0f,
-                                                  false, APP_ACTION_NONE};
+                                                  false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-1500.0f, 2350.0f, PI,
-                                                  false, APP_ACTION_NONE};
+                                                  false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
 
@@ -299,11 +301,15 @@ void App_RunCurrentMode(void)
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[0].positive_position = 0U;
+            s_dynamic_route[0].negative_position = 0U;
             s_dynamic_route[1].x_mm = 0.0f;
             s_dynamic_route[1].y_mm = 0.0f;
             s_dynamic_route[1].yaw_rad = PI / 2.0f;    /* 到达起点原点后保持+X方向，不再恢复初始朝向 */
             s_dynamic_route[1].has_action = false;
             s_dynamic_route[1].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[1].positive_position = 0U;
+            s_dynamic_route[1].negative_position = 0U;
             App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;
 
@@ -400,7 +406,7 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
+        App_SendVisionTask(s_route[s_route_index].positive_position);
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
@@ -443,7 +449,7 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成反向云台视野内的果实处理 */
+        App_SendVisionTask(s_route[s_route_index].negative_position);
         s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
@@ -488,10 +494,17 @@ void App_NotifyGrabDone(void)
 /**
  * @brief  向 K230/上位机发送一次视觉处理请求
  */
-static void App_SendVisionTask(void)
+static void App_SendVisionTask(uint8_t position)
 {
+    char task[8];
+
     /* 请求 K230/上位机处理当前云台视野内的果实，并回传 arm:0~6。 */
-    UpperCP_SendTask("send");
+    if (position == 0U) {
+        UpperCP_SendTask("send");
+    } else if (position <= 12U) {
+        (void)snprintf(task, sizeof(task), "send:%u", (unsigned int)position);
+        UpperCP_SendTask(task);
+    }
 }
 
 /**
@@ -539,6 +552,8 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
     uint8_t best_steps;
     uint8_t out_len = 0U;
     uint8_t target_actions[12] = {APP_ACTION_NONE};
+    uint8_t target_positive_positions[12] = {0U};
+    uint8_t target_negative_positions[12] = {0U};
     float traveled;
     float cw_distance = 0.0f;
     float ccw_distance = 0.0f;
@@ -568,6 +583,11 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
         }
 
         target_actions[node_idx] |= action;
+        if (action == APP_ACTION_POSITIVE) {
+            target_positive_positions[node_idx] = position;
+        } else {
+            target_negative_positions[node_idx] = position;
+        }
     }
 
     /* 顺时针累计相邻节点的实际毫米距离，并记录覆盖最后一个目标时的路程。 */
@@ -617,6 +637,8 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
         temp_route[i] = k_route_c[curr];
         temp_route[i].action_mask = target_actions[curr];
         temp_route[i].has_action = (target_actions[curr] != APP_ACTION_NONE);
+        temp_route[i].positive_position = target_positive_positions[curr];
+        temp_route[i].negative_position = target_negative_positions[curr];
     }
 
     /* 剔除直线无动作点；目标、终点和四个防斜切拐角必须保留。 */

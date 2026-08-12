@@ -148,14 +148,29 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 void UpperCP_SendTask(const char *task)
 {
     static const char line_end[] = "\r\n";
+    uint8_t valid_task = 0U;
 
     if (task == NULL) {
         return;
     }
 
-    if ((strcmp(task, "send") != 0) &&
-        (strcmp(task, "pour") != 0) &&
-        (strcmp(task, "scan") != 0)) {
+    if ((strcmp(task, "send") == 0) ||
+        (strcmp(task, "pour") == 0) ||
+        (strcmp(task, "scan") == 0)) {
+        valid_task = 1U;
+    } else if (strncmp(task, "send:", 5U) == 0) {
+        const char *position_text = task + 5;
+        char *end;
+        long position = strtol(position_text, &end, 10);
+
+        if ((position_text[0] >= '1') && (position_text[0] <= '9') &&
+            (*end == '\0') &&
+            (position >= 1L) && (position <= 12L)) {
+            valid_task = 1U;
+        }
+    }
+
+    if (valid_task == 0U) {
         return;
     }
 
