@@ -11,7 +11,8 @@ typedef enum {
     APP_MODE_IDLE,      /**< 空闲模式：机器人处于静止状态，不执行任何航线 */
     APP_MODE_TEST,      /**< 测试模式：用于调试和测试功能，可能包含自定义的测试逻辑 */
     APP_MODE_ROUTE_A,   /**< 航线 A 模式：执行第一阶段的路径导航（例如向深处前行） */
-    APP_MODE_ROUTE_B,   /**< 航线 B 模式：预留模式 */
+    APP_MODE_ROUTE_B,   /**< 航线 B 入口模式：从 C 区底部进入 B 区扫码点 */
+    APP_MODE_SCAN_B,    /**< B 区扫码占位模式：当前直接进入 B 区抓取路线 */
     APP_MODE_SCAN_C,    /**< C 区扫码模式：发送 scan 后等待二维码或 10 秒超时 */
     APP_MODE_ROUTE_C,   /**< 航线 C 模式：执行第二阶段的路径导航（例如折返或区域内作业） */
     APP_MODE_BACK       /**< 返回模式：执行返回动作，例如回到起始点 */
