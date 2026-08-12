@@ -122,14 +122,14 @@ static const AppWaypoint_t k_route_a[] = {
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_SIDE(-1500.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1500.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1500.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1500.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1500.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1500.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1500.0f,  700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1500.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1000.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1000.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1000.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1000.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1000.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1000.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1000.0f,  700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1000.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -261,9 +261,9 @@ void App_RunCurrentMode(void)
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 10.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1500.0f, 10.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1300.0f, 10.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-1500.0f, 2350.0f, PI,
+            s_dynamic_route[2] = (AppWaypoint_t){-1300.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
@@ -461,8 +461,8 @@ static void App_RouteTick(void)
     }
 
     if (s_route_index < s_route_len) {
-        /* 仅在 A 区最后一个抓果点完成、向 (0,0) 起点倒车时(索引为 4)开启自动倒车；其他航点保持关闭正向前进 */
-        if (s_route == k_route_a && s_route_index == 4U) {
+        /* A 区从 (0,0) 返回起点(索引 4)和去停车位(索引 5)均开启自动倒车；其他航点保持关闭正向前进 */
+        if (s_route == k_route_a && (s_route_index == 4U || s_route_index == 5U)) {
             g_enable_auto_reverse = true;
         } else {
             g_enable_auto_reverse = false;
@@ -504,6 +504,7 @@ static void App_SendVisionTask(uint8_t position)
     } else if (position <= 12U) {
         (void)snprintf(task, sizeof(task), "send:%u", (unsigned int)position);
         UpperCP_SendTask(task);
+        Vofa_Printf("[VisionTask] %s\r\n", task);
     }
 }
 
