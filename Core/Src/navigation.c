@@ -34,9 +34,9 @@ TiancanPid_t anglepid = {
 /* 直线行进控制参数 */
 #define MOVE_LINEAR_SPEED         300.0f        /**< 第一轮纠偏调试降低直线速度，减小惯性对调参判断的干扰 */
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
-static float move_kp = 4.5f;                    /**< 加强直线行驶时的小角度航向纠偏 */
+static float move_kp = 4.0f;                    /**< 加强直线行驶时的小角度航向纠偏 */
 static float move_ki = 0.0f;
-static float move_kd = 0.0f;                    /**< HWT101 为 10Hz，首轮调试先关闭微分项，避免新帧跳变脉冲 */
+static float move_kd = 0.01f;                    /**< HWT101 为 10Hz，首轮调试先关闭微分项，避免新帧跳变脉冲 */
 static float move_target = 0.0f;  /**< 直线行进航偏纠偏目标朝向 (rad) */
 
 /** 
@@ -54,7 +54,7 @@ TiancanPid_t movepid = {
 #define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           10.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
-#define MOVE_MAX_ANGULAR          0.6f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
+#define MOVE_MAX_ANGULAR          1.0f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
 
 /* 到达最终角度调整控制参数 */

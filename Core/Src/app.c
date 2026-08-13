@@ -121,35 +121,35 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
-    WAYPOINT(-2600.0f, 15.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 30.0f, PI/2, false),
 };
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_SIDE(-1075.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1075.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1075.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1075.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1075.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1075.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1075.0f,  700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1075.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f,  700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1850.0f, 15.0f, PI, false),
-    WAYPOINT(-1850.0f, 400.0f, PI, 0),
-    WAYPOINT(-1850.0f, 900.0f, PI, 0),
-    WAYPOINT(-1850.0f, 1400.0f, PI, 0),
-    WAYPOINT(-1850.0f, 1900.0f, PI, 0),
-    WAYPOINT(-1850.0f, 2350.0f, PI, false),
+    WAYPOINT(-1855.0f, 30.0f, PI, false),
+    WAYPOINT(-1855.0f, 420.0f, PI, 0),
+    WAYPOINT(-1855.0f, 920.0f, PI, 0),
+    WAYPOINT(-1855.0f, 1420.0f, PI, 0),
+    WAYPOINT(-1855.0f, 1920.0f, PI, 0),
+    WAYPOINT(-1855.0f, 2350.0f, PI, false),
     WAYPOINT(-2570.0f, 2350.0f, 0, 0),
-    WAYPOINT(-2570.0f, 1880.0f, 0, 0),
-    WAYPOINT(-2570.0f, 1380.0f, 0, 0),
-    WAYPOINT(-2570.0f, 880.0f, 0, 0),
-    WAYPOINT(-2570.0f, 380.0f, 0, 0),
-    WAYPOINT(-2570.0f, 15.0f, 0, false),
+    WAYPOINT(-2570.0f, 1900.0f, 0, 0),
+    WAYPOINT(-2570.0f, 1400.0f, 0, 0),
+    WAYPOINT(-2570.0f, 900.0f, 0, 0),
+    WAYPOINT(-2570.0f, 400.0f, 0, 0),
+    WAYPOINT(-2570.0f, 30.0f, 0, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -263,11 +263,11 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
-            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 15.0f, PI / 2.0f,
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 30.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1075.0f, 15.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 30.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-1075.0f, 2350.0f, PI,
+            s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
@@ -301,7 +301,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 15.0f;
+            s_dynamic_route[0].y_mm = 20;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
@@ -359,7 +359,7 @@ static void App_RouteTick(void)
             return;
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
-            s_route[s_route_index].x_mm == -2600.0f &&
+            s_route[s_route_index].x_mm == -2570.0f &&
             s_route[s_route_index].y_mm == 2350.0f) {
             UpperCP_SendTask("pour");
             s_route_state = APP_ROUTE_WAIT_POUR;
@@ -557,7 +557,7 @@ static void App_SendVisionTask(uint8_t position)
  *       |                       |
  *      [11] -----------------> [0]
  *               (y = 0)
- *   (x = -2600)             (x = -1900)
+ *   (x = -2570)             (x = -1900)
  * 
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。
