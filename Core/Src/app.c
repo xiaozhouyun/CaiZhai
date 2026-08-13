@@ -22,6 +22,7 @@
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
 #define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
+#define APP_ROUTE_POUR_DELAY_MS       2000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
@@ -58,6 +59,9 @@ typedef enum {
 
     APP_ROUTE_WAIT_NAVIGATION,
     /* 已向 Navigation_Request 下发当前航点，等待 Navigation_IsIdle() 到点。 */
+
+    APP_ROUTE_WAIT_POUR,
+    /* C 区倒料点已发送 pour，等待 2 秒后继续下一航点。 */
 
     APP_ROUTE_FIRST_WAIT_LIFT,
     /* 作业点第一视野：已抬升到 25cm，等待到位后向 +90度转云台。 */
@@ -116,7 +120,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 0.0f, 0.0f, 0),
+    WAYPOINT(0.0f, 0.0f, PI/2, 0),
     WAYPOINT(-2600.0f, 10.0f, PI/2, false),
 };
 
@@ -354,6 +358,14 @@ static void App_RouteTick(void)
         if (!Navigation_IsIdle()) {
             return;
         }
+        if (g_app_mode == APP_MODE_ROUTE_C &&
+            s_route[s_route_index].x_mm == -2600.0f &&
+            s_route[s_route_index].y_mm == 2350.0f) {
+            UpperCP_SendTask("pour");
+            s_route_state = APP_ROUTE_WAIT_POUR;
+            App_RouteSetDelay(APP_ROUTE_POUR_DELAY_MS);
+            return;
+        }
         if (!s_route[s_route_index].has_action ||
             s_route[s_route_index].action_mask == APP_ACTION_NONE ||
             !g_enable_grasp_logic) {
@@ -372,6 +384,12 @@ static void App_RouteTick(void)
             // App_LogLiftTxStatus();
             return;
         }
+    } else if (s_route_state == APP_ROUTE_WAIT_POUR) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        s_route_index++;
+        s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LIFT) {
         /* 
          * 前置拦截（Guard Clause）检查：
