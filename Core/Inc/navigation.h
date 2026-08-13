@@ -70,6 +70,8 @@ extern float nav_yaw_zero_deg;                  /**< 零点偏差 */
 extern int TarAngle;
 extern float TarPos;
 extern float v[2];                              /**< 左右轮计算出的实际控制速度，单位：mm/s */
+extern volatile float g_nav_move_err_rad;       /**< 直线阶段当前航向误差，单位：rad */
+extern volatile float g_nav_move_angular_rad_s; /**< 直线阶段实际限幅后纠偏角速度，单位：rad/s */
 
 /* 导航 API 声明 */
 
@@ -135,4 +137,3 @@ void Chassis_ClearClogProtection(void);
 float Navigation_GetYawDeg(void);
 
 #endif
-

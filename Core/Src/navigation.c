@@ -90,6 +90,8 @@ float nav_yaw_zero_deg=0.0f;
 int TarAngle;
 float TarPos = 360.0f;
 float v[2];                                                     /**< 左右轮线速度，单位：mm/s */
+volatile float g_nav_move_err_rad;                              /**< VOFA 直线纠偏诊断：航向误差 */
+volatile float g_nav_move_angular_rad_s;                        /**< VOFA 直线纠偏诊断：限幅后角速度 */
 
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
@@ -209,6 +211,8 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     target.y = target_y_mm;
     target.yaw = target_yaw_rad;
     start = g_robot_pos;
+    g_nav_move_err_rad = 0.0f;
+    g_nav_move_angular_rad_s = 0.0f;
 
     /* 1. 计算从起始点指向目标点的绝对方位角 */
     float heading_angle = atan2f(target.x - start.x, target.y - start.y);
@@ -242,6 +246,8 @@ bool Navigation_IsIdle(void)
 void Navigation_Stop(void)
 {
     navigation_state = NAVIGATION_STATE_IDLE;
+    g_nav_move_err_rad = 0.0f;
+    g_nav_move_angular_rad_s = 0.0f;
     Chassis_SetSpeed(0.0f, 0.0f);
 }
 
@@ -359,6 +365,8 @@ static void Navigation_HandleMoving(void)
     /* 到达目标点判定半径内，说明行进完成，进入终点角度微调状态 */
     if (distance < MOVE_ARRIVE_DIST) {
         navigation_state = NAVIGATION_STATE_ARRIVED;
+        g_nav_move_err_rad = 0.0f;
+        g_nav_move_angular_rad_s = 0.0f;
         Chassis_SetSpeed(0.0f, 0.0f);
         current_linear_speed = 0.0f;
         last_state = NAVIGATION_STATE_IDLE;
@@ -376,6 +384,7 @@ static void Navigation_HandleMoving(void)
     float heading_angle = atan2f(dx, dy);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
+    g_nav_move_err_rad = err;
 
     now = xTaskGetTickCount();
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
@@ -391,11 +400,7 @@ static void Navigation_HandleMoving(void)
     } else if (angular_speed < -MOVE_MAX_ANGULAR) {
         angular_speed = -MOVE_MAX_ANGULAR;
     }
-
-    /* 到达终点前 80mm 抑制纠偏角速度：让左右轮保持完全相同的速度直行停车，消除两轮速差引起的甩尾打滑与角度偏斜 */
-    if (distance < 80.0f) {
-        angular_speed = 0.0f;
-    }
+    g_nav_move_angular_rad_s = angular_speed;
 
     /* 临近终点减速逻辑，距离小于 350mm 时提前平滑减速，防止冲过头 */
     #define MOVE_DECEL_DIST 350.0f

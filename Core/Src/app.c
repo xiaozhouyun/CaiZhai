@@ -22,7 +22,7 @@
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
 #define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
-#define APP_ROUTE_POUR_DELAY_MS       2000U  /* C 区到达倒料点后，等待上位机执行 pour */
+#define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
@@ -126,14 +126,14 @@ static const AppWaypoint_t k_route_a[] = {
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_SIDE(-1000.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1000.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1000.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1000.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1000.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1000.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1000.0f,  700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1000.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-1050.0f,  700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-1050.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -265,9 +265,9 @@ void App_RunCurrentMode(void)
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 10.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1000.0f, 10.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 10.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-1000.0f, 2350.0f, PI,
+            s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
