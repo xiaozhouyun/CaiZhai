@@ -121,7 +121,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
-    WAYPOINT(-2600.0f, 10.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 15.0f, PI/2, false),
 };
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
@@ -138,7 +138,7 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1900.0f, 10.0f, PI, false),
+    WAYPOINT(-1900.0f, 15.0f, PI, false),
     WAYPOINT(-1900.0f, 400.0f, PI, 0),
     WAYPOINT(-1900.0f, 900.0f, PI, 0),
     WAYPOINT(-1900.0f, 1400.0f, PI, 0),
@@ -149,7 +149,7 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-2600.0f, 1400.0f, 0, 0),
     WAYPOINT(-2600.0f, 900.0f, 0, 0),
     WAYPOINT(-2600.0f, 400.0f, 0, 0),
-    WAYPOINT(-2600.0f, 10.0f, 0, false),
+    WAYPOINT(-2600.0f, 15.0f, 0, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -263,9 +263,9 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
-            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 10.0f, PI / 2.0f,
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 15.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 10.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 15.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
@@ -301,7 +301,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 10.0f;
+            s_dynamic_route[0].y_mm = 15.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;

@@ -380,8 +380,8 @@ static void Navigation_HandleMoving(void)
     }
     last_state = NAVIGATION_STATE_MOVING;
 
-    /* 纠偏误差：根据当前位置和目标点连线的方位角，对比当前机器人的朝向角度 */
-    float heading_angle = atan2f(dx, dy);
+    /* 纠偏误差：整个航段固定使用起点到终点的方位角，避免接近终点时动态瞄准导致路径走成弧线。 */
+    float heading_angle = atan2f(target.x - start.x, target.y - start.y);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
     g_nav_move_err_rad = err;
