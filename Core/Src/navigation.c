@@ -28,7 +28,7 @@ TiancanPid_t anglepid = {
 
 #define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
-#define ALIGN_MIN_ANGULAR         0.6f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
+#define ALIGN_MIN_ANGULAR         0.2f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
 #define ALIGN_ERR_THRESH          0.025f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
 
 /* 直线行进控制参数 */

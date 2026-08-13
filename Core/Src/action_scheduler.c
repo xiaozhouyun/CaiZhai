@@ -556,22 +556,17 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_SKIP_WAIT_LIFT:
         /*
-         * 已升到安全高度，根据当前云台角度决定跳过时的转动目标：
-         * - 当前在 +90° 附近，转到 -90°，等价于切到另一侧视野；
-         * - 当前在 -90° 附近，说明另一侧也看过，回中；
-         * - 当前接近中位，保持/回到中位即可。
+         * A 区保留双视野跳过逻辑：+90° 视野跳过后转到 -90°；
+         * B、C 区不切换第二视野，跳过后先回到 0° 中位。
          */
         {
             float cur = PCA9685_Get180Angle(7U);
             float target;
-            if (cur > 75.0f) {
-                /* 云台在 +90° 附近 → 转到 -90°，模拟完成第二次视野 */
+            if (g_app_mode == APP_MODE_ROUTE_A && cur > 75.0f) {
+                /* 仅 A 区：云台在 +90° 附近 → 转到 -90° */
                 target = -90.0f;
-            } else if (cur < -75.0f) {
-                /* 云台在 -90° 附近 → 回中 */
-                target = 0.0f;
             } else {
-                /* 已经在中位，无需转动 */
+                /* A 区其他角度以及 B、C 区均先回中 */
                 target = 0.0f;
             }
             float delta = fabsf(target - cur);

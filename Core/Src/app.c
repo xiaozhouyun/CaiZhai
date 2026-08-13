@@ -20,7 +20,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1800U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
@@ -261,9 +261,9 @@ void App_RunCurrentMode(void)
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 10.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1300.0f, 10.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1000.0f, 10.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-1300.0f, 2350.0f, PI,
+            s_dynamic_route[2] = (AppWaypoint_t){-1000.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
