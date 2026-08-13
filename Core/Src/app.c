@@ -24,6 +24,7 @@
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
                                      ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE), \
@@ -44,13 +45,14 @@ volatile bool s_app_running;
 volatile bool s_stop_requested;
 static volatile bool s_grab_done;      /* 视觉动作机完成一次处理后置位 */
 static const AppWaypoint_t *s_route;   /* 当前执行路线；A 指向常量，C 指向下方静态副本 */
-static AppWaypoint_t s_dynamic_route[12]; /* C 区规划结果，不能使用函数栈数组 */
+static AppWaypoint_t s_dynamic_route[APP_ROUTE_C_MAX_WAYPOINTS]; /* 动态路线不能使用函数栈数组 */
 static uint8_t s_route_len;
 static uint8_t s_route_index;
 static AppMode_t s_route_next_mode;
 static uint32_t s_route_deadline;
 static bool s_qr_scan_started;
 static uint32_t s_qr_scan_deadline;
+static bool s_route_pour_sent;
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -121,7 +123,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
-    WAYPOINT(-2600.0f, 30.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 100.0f, PI/2, false),
 };
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
@@ -138,18 +140,18 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1855.0f, 30.0f, PI, false),
-    WAYPOINT(-1855.0f, 420.0f, PI, 0),
-    WAYPOINT(-1855.0f, 920.0f, PI, 0),
-    WAYPOINT(-1855.0f, 1420.0f, PI, 0),
-    WAYPOINT(-1855.0f, 1920.0f, PI, 0),
-    WAYPOINT(-1855.0f, 2350.0f, PI, false),
-    WAYPOINT(-2570.0f, 2350.0f, 0, 0),
-    WAYPOINT(-2570.0f, 1900.0f, 0, 0),
-    WAYPOINT(-2570.0f, 1400.0f, 0, 0),
-    WAYPOINT(-2570.0f, 900.0f, 0, 0),
-    WAYPOINT(-2570.0f, 400.0f, 0, 0),
-    WAYPOINT(-2570.0f, 30.0f, 0, false),
+    WAYPOINT(-1930.0f, 115.0f, 0, false),
+    WAYPOINT(-1930.0f, 420.0f, 0, 0),
+    WAYPOINT(-1930.0f, 960.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1450.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1970.0f, 0, 0),
+    WAYPOINT(-1930.0f, 2350.0f, 0, false),
+    WAYPOINT(-2655.0f, 2350.0f, PI, 0),
+    WAYPOINT(-2655.0f, 1900.0f, PI, 0),
+    WAYPOINT(-2655.0f, 1400.0f, PI, 0),
+    WAYPOINT(-2655.0f, 900.0f, PI, 0),
+    WAYPOINT(-2655.0f, 400.0f, PI, 0),
+    WAYPOINT(-2655.0f, 100.0f, PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -171,6 +173,7 @@ void App_Init(void)
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
     s_qr_scan_started = false;
+    s_route_pour_sent = false;
 }
 
 /**
@@ -263,9 +266,9 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
-            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 30.0f, PI / 2.0f,
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 100.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 30.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 100.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
@@ -301,7 +304,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 20;
+            s_dynamic_route[0].y_mm = 100.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
@@ -359,9 +362,11 @@ static void App_RouteTick(void)
             return;
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
-            s_route[s_route_index].x_mm == -2570.0f &&
+            !s_route_pour_sent &&
+            s_route[s_route_index].x_mm == -2655.0f &&
             s_route[s_route_index].y_mm == 2350.0f) {
             UpperCP_SendTask("pour");
+            s_route_pour_sent = true;
             s_route_state = APP_ROUTE_WAIT_POUR;
             App_RouteSetDelay(APP_ROUTE_POUR_DELAY_MS);
             return;
@@ -493,12 +498,8 @@ static void App_RouteTick(void)
     }
 
     if (s_route_index < s_route_len) {
-        /* A 区从 (0,0) 返回起点(索引 4)和去停车位(索引 5)均开启自动倒车；其他航点保持关闭正向前进 */
-        if (s_route == k_route_a && (s_route_index == 4U || s_route_index == 5U)) {
-            g_enable_auto_reverse = true;
-        } else {
-            g_enable_auto_reverse = false;
-        }
+        /* 自动倒车全局开关已打开：所有航点均允许自动倒车 */
+        g_enable_auto_reverse = true;
 
         /* 本航点已完成，向导航任务请求下一航点；到点结果由下一轮 Tick 检查。 */
         (void)Navigation_Request(s_route[s_route_index].x_mm,
@@ -541,7 +542,7 @@ static void App_SendVisionTask(uint8_t position)
 }
 
 /**
- * @brief  C区环形拓扑多目标点最短路径规划与导航执行函数
+ * @brief  按二维码下发顺序规划并执行 C 区环形路线
  * @details C区 12 个节点的环形轨道拓扑结构示意图：
  * 
  *               (y = 2350)
@@ -557,15 +558,13 @@ static void App_SendVisionTask(uint8_t position)
  *       |                       |
  *      [11] -----------------> [0]
  *               (y = 0)
- *   (x = -2570)             (x = -1900)
+ *   (x = -2655)             (x = -1900)
  * 
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。
- *          2. 把二维码位置 1~12 映射为环路节点和 +90/-90 度云台动作位。
- *          3. 评估顺时针 (Clockwise) 与逆时针 (Counter-Clockwise) 覆盖全部目标的实际毫米路程。
- *          4. 自动选取总路程较短的绕行方向；路程相同时选择顺时针。
- *          5. 沿途生成航点队列，同一底盘停车点的两侧动作合并到 action_mask。
- *          6. 启动非阻塞航线调度器完成多目标任务。
+ *          2. 依次把二维码位置 1~12 映射为环路节点和云台动作位，不重排、不合并。
+ *          3. 每两个相邻目标之间比较顺/逆时针实际毫米路程，选择较短的一段环路。
+ *          4. 保留目标点和防斜切拐角，启动非阻塞航线调度器完成多目标任务。
  * 
  * @param  fruit_positions 8 个水果位置编号数组，每项范围为 1 ~ 12
  * @param  next_mode      完成后跳转的下一个模式
@@ -576,121 +575,91 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
 {
     const uint8_t start_node_idx = 11U;
     uint8_t i;
-    uint8_t step;
     uint8_t curr;
     uint8_t next;
     uint8_t node_idx;
-    uint8_t cw_steps = 0U;
-    uint8_t ccw_steps = 0U;
-    uint8_t best_steps;
     uint8_t out_len = 0U;
-    uint8_t target_actions[12] = {APP_ACTION_NONE};
-    uint8_t target_positive_positions[12] = {0U};
-    uint8_t target_negative_positions[12] = {0U};
-    float traveled;
-    float cw_distance = 0.0f;
-    float ccw_distance = 0.0f;
+    uint8_t action;
+    float cw_distance;
+    float ccw_distance;
     bool choose_cw;
-    AppWaypoint_t temp_route[12];
 
     if (fruit_positions == NULL) {
         return -1;
     }
 
-    /* 二维码位置映射为底盘停车节点，并合并同一点的左右云台动作。 */
+    curr = start_node_idx;
+
+    /* 严格按二维码数组顺序逐个生成目标，不能按环路位置重新排序。 */
     for (i = 0U; i < 8U; i++) {
         uint8_t position = fruit_positions[i];
-        uint8_t action;
 
         if (position >= 1U && position <= 4U) {
             node_idx = (uint8_t)(5U - position);
-            action = APP_ACTION_POSITIVE;
+            action = APP_ACTION_NEGATIVE;
         } else if (position >= 5U && position <= 8U) {
             node_idx = (uint8_t)(9U - position);
-            action = APP_ACTION_NEGATIVE;
+            action = APP_ACTION_POSITIVE;
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);
-            action = APP_ACTION_POSITIVE;
+            action = APP_ACTION_NEGATIVE;
         } else {
             return -1;
         }
 
-        target_actions[node_idx] |= action;
-        if (action == APP_ACTION_POSITIVE) {
-            target_positive_positions[node_idx] = position;
-        } else {
-            target_negative_positions[node_idx] = position;
-        }
-    }
-
-    /* 顺时针累计相邻节点的实际毫米距离，并记录覆盖最后一个目标时的路程。 */
-    curr = start_node_idx;
-    traveled = 0.0f;
-    for (step = 1U; step <= 12U; step++) {
-        next = (uint8_t)((curr + 1U) % 12U);
-        traveled += fabsf(k_route_c[next].x_mm - k_route_c[curr].x_mm) +
-                    fabsf(k_route_c[next].y_mm - k_route_c[curr].y_mm);
-        curr = next;
-        if (target_actions[curr] != APP_ACTION_NONE) {
-            cw_steps = step;
-            cw_distance = traveled;
-        }
-    }
-
-    /* 逆时针执行相同计算，不能用节点个数代替实际路程。 */
-    curr = start_node_idx;
-    traveled = 0.0f;
-    for (step = 1U; step <= 12U; step++) {
-        next = (curr == 0U) ? 11U : (uint8_t)(curr - 1U);
-        traveled += fabsf(k_route_c[next].x_mm - k_route_c[curr].x_mm) +
-                    fabsf(k_route_c[next].y_mm - k_route_c[curr].y_mm);
-        curr = next;
-        if (target_actions[curr] != APP_ACTION_NONE) {
-            ccw_steps = step;
-            ccw_distance = traveled;
-        }
-    }
-
-    if (cw_steps == 0U || ccw_steps == 0U) {
-        return -1;
-    }
-
-    choose_cw = (cw_distance <= ccw_distance);
-    best_steps = choose_cw ? cw_steps : ccw_steps;
-    curr = start_node_idx;
-
-    /* 提取选定方向上的基础节点，并附加该停车点所需的云台方向。 */
-    for (i = 0U; i < best_steps; i++) {
-        if (choose_cw) {
-            curr = (uint8_t)((curr + 1U) % 12U);
-        } else {
-            curr = (curr == 0U) ? 11U : (uint8_t)(curr - 1U);
+        cw_distance = 0.0f;
+        next = curr;
+        while (next != node_idx) {
+            uint8_t following = (uint8_t)((next + 1U) % 12U);
+            cw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                           fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+            next = following;
         }
 
-        temp_route[i] = k_route_c[curr];
-        temp_route[i].action_mask = target_actions[curr];
-        temp_route[i].has_action = (target_actions[curr] != APP_ACTION_NONE);
-        temp_route[i].positive_position = target_positive_positions[curr];
-        temp_route[i].negative_position = target_negative_positions[curr];
-    }
-
-    /* 剔除直线无动作点；目标、终点和四个防斜切拐角必须保留。 */
-    for (i = 0U; i < best_steps; i++) {
-        if (choose_cw) {
-            node_idx = (uint8_t)((start_node_idx + i + 1U) % 12U);
-        } else {
-            node_idx = (uint8_t)((start_node_idx + 12U - ((i + 1U) % 12U)) % 12U);
+        ccw_distance = 0.0f;
+        next = curr;
+        while (next != node_idx) {
+            uint8_t following = (next == 0U) ? 11U : (uint8_t)(next - 1U);
+            ccw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                            fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+            next = following;
         }
 
-        if (temp_route[i].has_action || (i == best_steps - 1U) ||
-            node_idx == 0U || node_idx == 5U || node_idx == 6U || node_idx == 11U) {
-            if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
-                return -1;
+        choose_cw = (cw_distance <= ccw_distance);
+        while (curr != node_idx) {
+            next = choose_cw ? (uint8_t)((curr + 1U) % 12U)
+                             : ((curr == 0U) ? 11U : (uint8_t)(curr - 1U));
+            curr = next;
+
+            /* 中途只保留矩形拐角；目标点在循环后单独加入并绑定本次动作。 */
+            if (curr != node_idx &&
+                (curr == 0U || curr == 5U || curr == 6U || curr == 11U)) {
+                if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
+                    return -1;
+                }
+                s_dynamic_route[out_len] = k_route_c[curr];
+                s_dynamic_route[out_len].has_action = false;
+                s_dynamic_route[out_len].action_mask = APP_ACTION_NONE;
+                s_dynamic_route[out_len].positive_position = 0U;
+                s_dynamic_route[out_len].negative_position = 0U;
+                out_len++;
             }
-            s_dynamic_route[out_len++] = temp_route[i];
         }
+
+        if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
+            return -1;
+        }
+        s_dynamic_route[out_len] = k_route_c[node_idx];
+        s_dynamic_route[out_len].has_action = true;
+        s_dynamic_route[out_len].action_mask = action;
+        s_dynamic_route[out_len].positive_position =
+            (action == APP_ACTION_POSITIVE) ? position : 0U;
+        s_dynamic_route[out_len].negative_position =
+            (action == APP_ACTION_NEGATIVE) ? position : 0U;
+        out_len++;
     }
 
+    s_route_pour_sent = false;
     App_StartRoute(s_dynamic_route, out_len, next_mode);
 
     return 0;

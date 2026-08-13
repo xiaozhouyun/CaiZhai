@@ -65,12 +65,23 @@ static int expect_output(const char *expected)
 
 int main(void)
 {
+    static const uint8_t default_fruits[8] = {4U, 3U, 1U, 10U, 8U, 9U, 2U, 11U};
     const char *invalid_tasks[] = {
         "send:", "send:0", "send:01", "send:+1", "send: 1",
         "send:13", "send:abc", "send:1xxx", "other"
     };
     size_t accepted_length;
     size_t i;
+
+    memset(fruits, 0, sizeof(fruits));
+    fruits_count = 8U;
+    CameraFlag = 1U;
+    UpperCP_ResetQrResult();
+    if ((memcmp(fruits, default_fruits, sizeof(fruits)) != 0) ||
+        (fruits_count != 0U) || (CameraFlag != 0U)) {
+        fprintf(stderr, "QR reset did not restore defaults\n");
+        return 1;
+    }
 
     UpperCP_SendTask("send");
     UpperCP_SendTask("send:1");

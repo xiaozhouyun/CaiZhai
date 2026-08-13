@@ -199,14 +199,18 @@ float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量
 uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
 
+#define UPPERCP_DEFAULT_FRUITS 4U, 3U, 1U, 10U, 8U, 9U, 2U, 11U
+
+static const uint8_t k_default_fruits[8] = {UPPERCP_DEFAULT_FRUITS};
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
-uint8_t fruits[8] = {4,3,1,10,8,9,2,11};
+uint8_t fruits[8] = {UPPERCP_DEFAULT_FRUITS};
 /* uint8_t fruits[8] = {12,2,9,4,5,11,1,7}; */
 
 uint8_t fruits_count = 0;
 
 void UpperCP_ResetQrResult(void)
 {
+    memcpy(fruits, k_default_fruits, sizeof(fruits));
     fruits_count = 0U;
     CameraFlag = 0U;
 }

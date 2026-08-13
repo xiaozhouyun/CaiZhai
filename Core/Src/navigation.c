@@ -11,7 +11,7 @@
 /* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
 static float align_kp = 3.0f;
 static float align_ki = 0.0f;
-static float align_kd = 0.0f;
+static float align_kd = 0.01f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
 
 /** 
@@ -53,14 +53,14 @@ TiancanPid_t movepid = {
 
 #define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           10.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
+#define MOVE_MIN_SPEED            20.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
 #define MOVE_MAX_ANGULAR          1.0f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
 static float arrived_ki = 0.0f;
-static float arrived_kd = 0.0f;
+static float arrived_kd = 0.01f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
 
 /** 
@@ -96,7 +96,7 @@ volatile float g_nav_move_angular_rad_s;                        /**< VOFA 直线
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
 static bool s_is_reverse_mode = false;                           /* 当前离散导航周期的实际倒车模式标志 */
-volatile bool g_enable_auto_reverse = false;                     /* 自动倒车使能全局开关：默认关闭(false)，强行转动车头正向行驶 */
+volatile bool g_enable_auto_reverse = true;                      /* 自动倒车使能全局开关：默认打开(true)，允许偏差大时直接倒车行驶 */
 
 /* 静态控制函数声明 */
 static void Navigation_HandleIdle(void);
@@ -220,7 +220,7 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     /* 2. 计算如果按正常前进，车头需要旋转的角度偏差 */
     float fwd_err = Navigation_NormalizeRad(heading_angle - g_robot_pos.yaw * NAV_PI / 180.0f);
 
-    /* 3. 自动倒车判定：若全局使能 g_enable_auto_reverse == true 且偏差 > 120° 才会倒车；默认 false 强制转动车头 180° 正向行驶 */
+    /* 3. 自动倒车判定：若全局使能 g_enable_auto_reverse == true 且偏差 > 120° 才会倒车；关闭时强制转动车头 180° 正向行驶 */
     if (g_enable_auto_reverse && fabsf(fwd_err) > 2.094f) {
         s_is_reverse_mode = true;
     } else {

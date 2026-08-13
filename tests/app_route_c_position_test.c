@@ -15,6 +15,8 @@ static uint32_t s_tick;
 static bool s_navigation_idle = true;
 static char s_tasks[16][8];
 static uint8_t s_task_count;
+static float s_gimbal_angles[16];
+static uint8_t s_gimbal_count;
 
 volatile position_t g_robot_pos = {-2600.0f, 10.0f, 0.0f};
 volatile bool g_enable_auto_reverse;
@@ -47,7 +49,8 @@ void ActionScheduler_Cancel(void) {}
 bool ActionScheduler_IsGimbalBusy(void) { return false; }
 void ActionScheduler_StartGimbalMove(float target_angle, uint32_t duration_ms)
 {
-    (void)target_angle;
+    assert(s_gimbal_count < (uint8_t)(sizeof(s_gimbal_angles) / sizeof(s_gimbal_angles[0])));
+    s_gimbal_angles[s_gimbal_count++] = target_angle;
     (void)duration_ms;
 }
 
@@ -65,6 +68,7 @@ static void RunRoute(const uint8_t positions[8])
     s_tick = 0U;
     s_navigation_idle = true;
     s_task_count = 0U;
+    s_gimbal_count = 0U;
     now_pos = 27.0f;
     App_Init();
     s_app_running = true;
@@ -85,6 +89,7 @@ static void RunRoute(const uint8_t positions[8])
 
     assert(guard < 500U);
     assert(s_task_count == 8U);
+    assert(s_gimbal_count == 8U);
 }
 
 static uint8_t ParsePosition(const char *task)
@@ -99,8 +104,12 @@ int main(void)
 {
     static const uint8_t paired_positions[8] = {1U, 5U, 2U, 6U, 3U, 7U, 4U, 8U};
     static const char *expected_tasks[8] = {
-        "send:4", "send:8", "send:3", "send:7",
-        "send:2", "send:6", "send:1", "send:5"
+        "send:1", "send:5", "send:2", "send:6",
+        "send:3", "send:7", "send:4", "send:8"
+    };
+    static const float expected_paired_angles[8] = {
+        -90.0f, 90.0f, -90.0f, 90.0f,
+        -90.0f, 90.0f, -90.0f, 90.0f
     };
     static const uint8_t spread_positions[8] = {1U, 2U, 3U, 4U, 9U, 10U, 11U, 12U};
     bool seen[13] = {false};
@@ -109,11 +118,14 @@ int main(void)
     RunRoute(paired_positions);
     for (i = 0U; i < 8U; ++i) {
         assert(strcmp(s_tasks[i], expected_tasks[i]) == 0);
+        assert(s_gimbal_angles[i] == expected_paired_angles[i]);
     }
 
     RunRoute(spread_positions);
     for (i = 0U; i < 8U; ++i) {
         uint8_t position = ParsePosition(s_tasks[i]);
+        assert(position == spread_positions[i]);
+        assert(s_gimbal_angles[i] == -90.0f);
         assert(!seen[position]);
         seen[position] = true;
     }
