@@ -123,7 +123,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
-    WAYPOINT(-2600.0f, 100.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 50.0f, PI/2, false),
 };
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
@@ -140,25 +140,24 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1930.0f, 115.0f, 0, false),
-    WAYPOINT(-1930.0f, 420.0f, 0, 0),
-    WAYPOINT(-1930.0f, 960.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1450.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1970.0f, 0, 0),
+    WAYPOINT(-1930.0f, 50.0f, 0, false),
+    WAYPOINT(-1930.0f, 400.0f, 0, 0),
+    WAYPOINT(-1930.0f, 900.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1400.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1900.0f, 0, 0),
     WAYPOINT(-1930.0f, 2350.0f, 0, false),
     WAYPOINT(-2655.0f, 2350.0f, PI, 0),
     WAYPOINT(-2655.0f, 1900.0f, PI, 0),
     WAYPOINT(-2655.0f, 1400.0f, PI, 0),
     WAYPOINT(-2655.0f, 900.0f, PI, 0),
     WAYPOINT(-2655.0f, 400.0f, PI, 0),
-    WAYPOINT(-2655.0f, 100.0f, PI, false),
+    WAYPOINT(-2655.0f, 50.0f, PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
-static void App_SendVisionTask(uint8_t position);
 
 /**
  * @brief 初始化应用层状态
@@ -266,9 +265,9 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
-            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 100.0f, PI / 2.0f,
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 50.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 100.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 50.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
@@ -304,7 +303,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 100.0f;
+            s_dynamic_route[0].y_mm = 50.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
@@ -423,7 +422,7 @@ static void App_RouteTick(void)
         if (g_app_mode == APP_MODE_SCAN_B) {
             /* B 区抓取树上果子：云台到位后保持当前高度，直接请求视觉抓取。 */
             s_grab_done = false;
-            App_SendVisionTask(s_route[s_route_index].positive_position);
+            UpperCP_SendTask("send");
             s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
             return;
         }
@@ -436,7 +435,7 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        App_SendVisionTask(s_route[s_route_index].positive_position);
+        UpperCP_SendTask("send");
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
@@ -473,7 +472,7 @@ static void App_RouteTick(void)
         if (g_app_mode == APP_MODE_SCAN_B) {
             /* B 区反向视野同样不降低升降台，直接识别并抓取。 */
             s_grab_done = false;
-            App_SendVisionTask(s_route[s_route_index].negative_position);
+            UpperCP_SendTask("send");
             s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
             return;
         }
@@ -486,7 +485,7 @@ static void App_RouteTick(void)
             return;
         }
         s_grab_done = false;
-        App_SendVisionTask(s_route[s_route_index].negative_position);
+        UpperCP_SendTask("send");
         s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
@@ -522,23 +521,6 @@ void App_NotifyGrabDone(void)
 {
     /* 由 ActionScheduler 在动作结束时调用；这里只置位，不能做阻塞操作。 */
     s_grab_done = true;
-}
-
-/**
- * @brief  向 K230/上位机发送一次视觉处理请求
- */
-static void App_SendVisionTask(uint8_t position)
-{
-    char task[8];
-
-    /* 请求 K230/上位机处理当前云台视野内的果实，并回传 arm:0~6。 */
-    if (position == 0U) {
-        UpperCP_SendTask("send");
-    } else if (position <= 12U) {
-        (void)snprintf(task, sizeof(task), "send:%u", (unsigned int)position);
-        UpperCP_SendTask(task);
-        Vofa_Printf("[VisionTask] %s\r\n", task);
-    }
 }
 
 /**

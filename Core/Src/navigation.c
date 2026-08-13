@@ -26,7 +26,7 @@ TiancanPid_t anglepid = {
     .target = &target_yaw
 };
 
-#define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
+#define ALIGN_FF_BASE             0.1f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
 #define ALIGN_MIN_ANGULAR         0.2f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
 #define ALIGN_ERR_THRESH          0.025f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
@@ -78,7 +78,7 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_SETTLE_MS         800U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
 #define ARRIVED_MAX_ANGULAR       1.2f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
 #define ARRIVED_MIN_ANGULAR       0.2f          /**< 终点最小角速度限制 (rad/s)，一步(0.1s帧)旋转1.15°可落进死区，避免极限环振荡 */
-#define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
+#define ARRIVED_FF_BASE           0.1f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
 #define ARRIVED_ERR_THRESH        0.025f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
 
 /* 状态机全局变量 */
