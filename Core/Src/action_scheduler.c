@@ -497,7 +497,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标；TofData 单位按 mm 使用，/10 后换成 cm。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 6.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f + 7.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);

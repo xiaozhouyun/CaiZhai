@@ -268,15 +268,10 @@ void StartTask02(void *argument)
       oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
       oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
       {
-        float vofa_data[6] = {
-          g_robot_pos.yaw,
-          (*movepid.target) * 180.0f / 3.1415926f,
-          g_nav_move_err_rad * 180.0f / 3.1415926f,
-          g_nav_move_angular_rad_s,
-          v[0],
-          v[1]
-        };
-        Vofa_SendFirewater(vofa_data, 6);
+        {
+        float vofa_data[4] = {g_robot_pos.x, g_robot_pos.y, g_robot_pos.yaw, (*anglepid.target) * 180.0f / 3.1415926f};
+        Vofa_SendFirewater(vofa_data, 4);
+      }
       }
     }
     Tiancan_Process();

@@ -51,7 +51,7 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          10.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
+#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
 #define MOVE_MIN_LINEAR           10.0f         /**< 减速时最小保证线速度 (mm/s) */
 #define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
 #define MOVE_MAX_ANGULAR          0.6f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
@@ -381,7 +381,7 @@ static void Navigation_HandleMoving(void)
     last_state = NAVIGATION_STATE_MOVING;
 
     /* 纠偏误差：整个航段固定使用起点到终点的方位角，避免接近终点时动态瞄准导致路径走成弧线。 */
-    float heading_angle = atan2f(target.x - start.x, target.y - start.y);
+    float heading_angle = atan2f(dx, dy);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
     g_nav_move_err_rad = err;

@@ -56,6 +56,14 @@ static float Odometer_CalcDeltaMm(float angle_deg, OdometerWheelState *wheel)
     } else if (delta_deg < -180.0f) {
         delta_deg += 360.0f;
     }
+
+    /* 回绕一次后偏差仍超出 ±180 度，说明回帧被 RS485 总线碰撞/错帧污染。
+       垃圾角度可达上千万度，直接累加会把坐标瞬间打飞（如 y 突然变成 42680），
+       本次增量按 0 处理，等下一帧有效数据自行恢复。 */
+    if (delta_deg > 180.0f || delta_deg < -180.0f) {
+        return 0.0f;
+    }
+
     return delta_deg * ODOMETER_DEG_TO_MM;
 }
 
