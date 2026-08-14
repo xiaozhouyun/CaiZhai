@@ -27,6 +27,7 @@
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
+#define APP_VISION_GRAB_TIMEOUT_MS   10000U /* A/C 区 send 后等待抓取完成的最长时间，超时跳过当前目标 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* A/C 区 send 后无上位机消息时，延时后启动摄像头搜索 */
 #define APP_VISION_CAMERA_SWEEP_DEG   10.0f  /* A/C 区等待视觉响应时，摄像头相对基准上摆角度 */
 #define APP_VISION_CAMERA_SWEEP_HALF_MS 1500U /* 摄像头从基准到 +10 度、再回基准的单程时间 */
@@ -74,7 +75,9 @@ static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转�
 static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
 static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
 static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
+static bool s_vision_wait_active;      /* A/C 区 send 后是否正在等待本轮视觉抓取完成 */
 static bool s_vision_camera_search_active; /* A/C 区 send 后无上位机消息时，是否启用摄像头上下搜索 */
+static bool s_vision_timeout_skip_requested; /* A/C 区视觉等待超时后是否已经投递过跳过命令 */
 static uint32_t s_vision_send_tick;     /* 最近一次 A/C 区 send 下发时刻 */
 static uint32_t s_vision_send_rx_count; /* send 下发时记录的上位机 UART5 接收字节计数 */
 static float s_vision_camera_base_angle; /* send 下发时摄像头俯仰基准角 */
@@ -232,7 +235,9 @@ void App_SetMode(AppMode_t mode)
 
 static void App_VisionCameraSearchReset(void)
 {
+    s_vision_wait_active = false;
     s_vision_camera_search_active = false;
+    s_vision_timeout_skip_requested = false;
     s_vision_send_tick = 0U;
     s_vision_send_rx_count = 0U;
     s_vision_camera_base_angle = 0.0f;
@@ -244,12 +249,31 @@ static void App_SendVisionTask(void)
     UpperCP_SendTask("send");
 
     if (g_app_mode == APP_MODE_ROUTE_A || g_app_mode == APP_MODE_ROUTE_C) {
+        s_vision_wait_active = true;
         s_vision_camera_search_active = true;
+        s_vision_timeout_skip_requested = false;
         s_vision_send_tick = HAL_GetTick();
         s_vision_send_rx_count = UpperCP_GetRxCount();
         s_vision_camera_base_angle = PCA9685_Get270Angle();
     } else {
         App_VisionCameraSearchReset();
+    }
+}
+
+void App_NotifyVisionCommandReceived(uint8_t command)
+{
+    if (!s_vision_wait_active) {
+        return;
+    }
+
+    s_vision_camera_search_active = false;
+    s_vision_timeout_skip_requested = false;
+
+    if (command == 0U || command == 5U || command == 6U) {
+        s_vision_wait_active = false;
+    } else {
+        s_vision_send_tick = HAL_GetTick();
+        s_vision_send_rx_count = UpperCP_GetRxCount();
     }
 }
 
@@ -261,16 +285,28 @@ static void App_VisionCameraSearchTick(void)
     uint32_t cycle_ms = APP_VISION_CAMERA_SWEEP_HALF_MS * 2U;
     float offset_deg;
 
+    if (!s_vision_wait_active) {
+        return;
+    }
+
+    now = HAL_GetTick();
+    if (!s_vision_timeout_skip_requested &&
+        (int32_t)(now - (s_vision_send_tick + APP_VISION_GRAB_TIMEOUT_MS)) >= 0) {
+        s_vision_camera_search_active = false;
+        s_vision_timeout_skip_requested = true;
+        ActionScheduler_RequestVisionArm(5U);
+        return;
+    }
+
     if (!s_vision_camera_search_active) {
         return;
     }
 
     if (UpperCP_GetRxCount() != s_vision_send_rx_count) {
-        App_VisionCameraSearchReset();
+        s_vision_camera_search_active = false;
         return;
     }
 
-    now = HAL_GetTick();
     if ((int32_t)(now - (s_vision_send_tick + APP_VISION_NO_RX_SEARCH_DELAY_MS)) < 0) {
         return;
     }
@@ -408,7 +444,8 @@ void App_RunCurrentMode(void)
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
         Chassis_SetSpeed(0.0f,0.6f);
-      
+        //  vTaskDelay(pdMS_TO_TICKS(2000U));
+    //    Chassis_SetSpeed(0.0f,0.0f);
         //  ActionScheduler_StartGimbalMove(90.0f, 1000U);
            App_SetMode(APP_MODE_IDLE);
             break;
@@ -711,6 +748,7 @@ static void App_RouteTick(void)
 void App_NotifyGrabDone(void)
 {
     /* 由 ActionScheduler 在动作结束时调用；这里只置位，不能做阻塞操作。 */
+    App_VisionCameraSearchReset();
     s_grab_done = true;
 }
 

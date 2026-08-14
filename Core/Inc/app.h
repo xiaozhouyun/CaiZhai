@@ -73,6 +73,12 @@ bool App_IsRunning(void);
 void App_NotifyGrabDone(void);
 
 /**
+ * @brief 通知当前视觉等待：已收到一条有效 arm 指令。
+ * @param command arm 指令值，范围 0~6。
+ */
+void App_NotifyVisionCommandReceived(uint8_t command);
+
+/**
  * @brief 串口指令接收处理函数，用于解析外部启动/停止指令
  * @param data 接收到的串口数据字节 ('a'/'A' 启动, 't'/'T' 停止)
  */

@@ -376,6 +376,13 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
          * 对准微调命令可由相机下一帧重发；抓取/跳过/坏果命令不能丢失。
          * 缓存只保留最新一条关键命令，当前动作结束后自动执行。
          */
+        if (command == 5U &&
+            (s_state == ACTION_SKIP_WAIT_EXTEND ||
+             s_state == ACTION_SKIP_WAIT_LIFT ||
+             s_state == ACTION_SKIP_WAIT_ROTATE)) {
+            ActionScheduler_Debug("DROP_SKIP_BUSY", command);
+            return;
+        }
         if (command == 0U || command == 5U || command == 6U) {
             s_pending_command = command;
             s_pending_command_valid = true;
