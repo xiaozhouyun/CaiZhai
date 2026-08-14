@@ -27,7 +27,8 @@
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
-#define APP_QR_CAMERA_CENTER_DEG      60.0f  /* 二维码相机扫码俯仰角 */
+#define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机每次停留开始俯仰角 */
+#define APP_QR_CAMERA_SCAN_END_DEG    50.0f  /* 二维码相机每次停留结束俯仰角 */
 #define APP_QR_GIMBAL_LEFT_DEG       -10.0f  /* 二维码搜索左侧最大角度 */
 #define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
@@ -68,6 +69,7 @@ static uint32_t s_qr_voice_deadline;   /* 下一次二维码位置语音允许�
 static bool s_route_pour_sent;         /* C 区倒料点 pour 指令发送标志，确保同一个倒料等待阶段只发送一次 pour */
 static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转、左回中、右转、右回中循环 */
 static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
+static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
 static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
@@ -194,6 +196,7 @@ void App_Init(void)
     s_route_pour_sent = false;
     s_qr_scan_phase = APP_QR_SCAN_LEFT;
     s_qr_gimbal_angle = 0.0f;
+    s_qr_scan_step_start_tick = 0U;
     s_qr_scan_step_deadline = 0U;
 }
 
@@ -207,6 +210,7 @@ void App_SetMode(AppMode_t mode)
         s_qr_voice_index = 0U;
         s_qr_scan_phase = APP_QR_SCAN_LEFT;
         s_qr_gimbal_angle = 0.0f;
+        s_qr_scan_step_start_tick = 0U;
         s_qr_scan_step_deadline = 0U;
     }
     g_app_mode = mode;
@@ -214,11 +218,23 @@ void App_SetMode(AppMode_t mode)
 
 static void App_QrScanSweepTick(void)
 {
-    if ((int32_t)(HAL_GetTick() - s_qr_scan_step_deadline) < 0) {
+    uint32_t now = HAL_GetTick();
+
+    if ((int32_t)(now - s_qr_scan_step_deadline) < 0) {
+        uint32_t elapsed = now - s_qr_scan_step_start_tick;
+        if (elapsed > APP_QR_SCAN_STEP_MS) {
+            elapsed = APP_QR_SCAN_STEP_MS;
+        }
+
+        (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG +
+                                  (APP_QR_CAMERA_SCAN_END_DEG - APP_QR_CAMERA_SCAN_START_DEG) *
+                                  ((float)elapsed / (float)APP_QR_SCAN_STEP_MS));
         return;
     }
 
-    s_qr_scan_step_deadline = HAL_GetTick() + APP_QR_SCAN_STEP_MS;
+    s_qr_scan_step_start_tick = now;
+    s_qr_scan_step_deadline = now + APP_QR_SCAN_STEP_MS;
+    (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
 
     switch (s_qr_scan_phase) {
     case APP_QR_SCAN_LEFT:
@@ -354,11 +370,12 @@ void App_RunCurrentMode(void)
         case APP_MODE_SCAN_C:
             if (!s_qr_scan_started) {
                 UpperCP_ResetQrResult();
-                PCA9685_Set270Angle(APP_QR_CAMERA_CENTER_DEG); /* 二维码相机保持扫码俯仰角 */
+                PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG); /* 二维码相机从扫码起始俯仰角开始慢速扫动 */
                 PCA9685_Set180Angle(7U, 0.0f); /* 扫码前水平云台回中，避免沿用上一次偏角 */
                 s_qr_scan_phase = APP_QR_SCAN_LEFT;
                 s_qr_gimbal_angle = 0.0f;
-                s_qr_scan_step_deadline = HAL_GetTick() + APP_QR_SCAN_STEP_MS;
+                s_qr_scan_step_start_tick = HAL_GetTick();
+                s_qr_scan_step_deadline = s_qr_scan_step_start_tick + APP_QR_SCAN_STEP_MS;
                 UpperCP_SendTask("scan");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_TIMEOUT_MS;
                 s_qr_voice_deadline = HAL_GetTick();
@@ -713,10 +730,10 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
 
             if (left_lane_dist < right_lane_dist) {
                 node_idx = left_lane_node;
-                action = APP_ACTION_POSITIVE;
+                action = APP_ACTION_NEGATIVE;
             } else {
                 node_idx = right_lane_node;
-                action = APP_ACTION_NEGATIVE;
+                action = APP_ACTION_POSITIVE;
             }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);
