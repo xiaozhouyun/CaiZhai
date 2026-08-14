@@ -24,6 +24,7 @@
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
@@ -52,6 +53,8 @@ static AppMode_t s_route_next_mode;
 static uint32_t s_route_deadline;
 static bool s_qr_scan_started;
 static uint32_t s_qr_scan_deadline;
+static uint8_t s_qr_voice_index;
+static uint32_t s_qr_voice_deadline;
 static bool s_route_pour_sent;
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
@@ -172,6 +175,7 @@ void App_Init(void)
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
     s_qr_scan_started = false;
+    s_qr_voice_index = 0U;
     s_route_pour_sent = false;
 }
 
@@ -182,6 +186,7 @@ void App_SetMode(AppMode_t mode)
 {
     if (mode == APP_MODE_SCAN_C) {
         s_qr_scan_started = false;
+        s_qr_voice_index = 0U;
     }
     g_app_mode = mode;
 }
@@ -285,13 +290,25 @@ void App_RunCurrentMode(void)
                 PCA9685_Set270Angle(60.0f); /* 二维码相机转向正前方 */
                 UpperCP_SendTask("scan");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_TIMEOUT_MS;
+                s_qr_voice_deadline = HAL_GetTick();
                 s_qr_scan_started = true;
                 break;
             }
 
-            if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
-                ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
-                  PCA9685_Set270Angle(30.0f);
+            if ((CameraFlag != 0U) && (fruits_count == 8U)) {
+                if (s_qr_voice_index < fruits_count) {
+                    if ((int32_t)(HAL_GetTick() - s_qr_voice_deadline) >= 0) {
+                        Voice_Num(30 + fruits[s_qr_voice_index]);
+                        s_qr_voice_index++;
+                        s_qr_voice_deadline = HAL_GetTick() + APP_QR_VOICE_INTERVAL_MS;
+                    }
+                    break;
+                }
+
+                PCA9685_Set270Angle(30.0f);
+                App_SetMode(APP_MODE_ROUTE_C);
+            } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
+                PCA9685_Set270Angle(30.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             }
             break;
