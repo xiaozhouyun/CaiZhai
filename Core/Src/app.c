@@ -27,6 +27,9 @@
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
+#define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* A/C 区 send 后无上位机消息时，延时后启动摄像头搜索 */
+#define APP_VISION_CAMERA_SWEEP_DEG   10.0f  /* A/C 区等待视觉响应时，摄像头相对基准上摆角度 */
+#define APP_VISION_CAMERA_SWEEP_HALF_MS 1500U /* 摄像头从基准到 +10 度、再回基准的单程时间 */
 #define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机每次停留开始俯仰角 */
 #define APP_QR_CAMERA_SCAN_END_DEG    50.0f  /* 二维码相机每次停留结束俯仰角 */
 #define APP_QR_GIMBAL_LEFT_DEG       -10.0f  /* 二维码搜索左侧最大角度 */
@@ -71,6 +74,10 @@ static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转�
 static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
 static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
 static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
+static bool s_vision_camera_search_active; /* A/C 区 send 后无上位机消息时，是否启用摄像头上下搜索 */
+static uint32_t s_vision_send_tick;     /* 最近一次 A/C 区 send 下发时刻 */
+static uint32_t s_vision_send_rx_count; /* send 下发时记录的上位机 UART5 接收字节计数 */
+static float s_vision_camera_base_angle; /* send 下发时摄像头俯仰基准角 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -176,6 +183,9 @@ static const AppWaypoint_t k_route_c[] = {
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
+static void App_SendVisionTask(void);
+static void App_VisionCameraSearchTick(void);
+static void App_VisionCameraSearchReset(void);
 static void App_QrScanSweepTick(void);
 static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
 
@@ -198,6 +208,7 @@ void App_Init(void)
     s_qr_gimbal_angle = 0.0f;
     s_qr_scan_step_start_tick = 0U;
     s_qr_scan_step_deadline = 0U;
+    App_VisionCameraSearchReset();
 }
 
 /**
@@ -213,7 +224,70 @@ void App_SetMode(AppMode_t mode)
         s_qr_scan_step_start_tick = 0U;
         s_qr_scan_step_deadline = 0U;
     }
+    if (mode != APP_MODE_ROUTE_A && mode != APP_MODE_ROUTE_C) {
+        App_VisionCameraSearchReset();
+    }
     g_app_mode = mode;
+}
+
+static void App_VisionCameraSearchReset(void)
+{
+    s_vision_camera_search_active = false;
+    s_vision_send_tick = 0U;
+    s_vision_send_rx_count = 0U;
+    s_vision_camera_base_angle = 0.0f;
+}
+
+static void App_SendVisionTask(void)
+{
+    s_grab_done = false;
+    UpperCP_SendTask("send");
+
+    if (g_app_mode == APP_MODE_ROUTE_A || g_app_mode == APP_MODE_ROUTE_C) {
+        s_vision_camera_search_active = true;
+        s_vision_send_tick = HAL_GetTick();
+        s_vision_send_rx_count = UpperCP_GetRxCount();
+        s_vision_camera_base_angle = PCA9685_Get270Angle();
+    } else {
+        App_VisionCameraSearchReset();
+    }
+}
+
+static void App_VisionCameraSearchTick(void)
+{
+    uint32_t now;
+    uint32_t elapsed;
+    uint32_t phase;
+    uint32_t cycle_ms = APP_VISION_CAMERA_SWEEP_HALF_MS * 2U;
+    float offset_deg;
+
+    if (!s_vision_camera_search_active) {
+        return;
+    }
+
+    if (UpperCP_GetRxCount() != s_vision_send_rx_count) {
+        App_VisionCameraSearchReset();
+        return;
+    }
+
+    now = HAL_GetTick();
+    if ((int32_t)(now - (s_vision_send_tick + APP_VISION_NO_RX_SEARCH_DELAY_MS)) < 0) {
+        return;
+    }
+
+    elapsed = now - s_vision_send_tick - APP_VISION_NO_RX_SEARCH_DELAY_MS;
+    phase = (cycle_ms == 0U) ? 0U : (elapsed % cycle_ms);
+
+    if (phase <= APP_VISION_CAMERA_SWEEP_HALF_MS) {
+        offset_deg = APP_VISION_CAMERA_SWEEP_DEG *
+                     ((float)phase / (float)APP_VISION_CAMERA_SWEEP_HALF_MS);
+    } else {
+        offset_deg = APP_VISION_CAMERA_SWEEP_DEG *
+                     (1.0f - ((float)(phase - APP_VISION_CAMERA_SWEEP_HALF_MS) /
+                              (float)APP_VISION_CAMERA_SWEEP_HALF_MS));
+    }
+
+    (void)PCA9685_Set270Angle(s_vision_camera_base_angle + offset_deg);
 }
 
 static void App_QrScanSweepTick(void)
@@ -538,8 +612,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_SCAN_B) {
             /* B 区抓取树上果子：云台到位后保持当前高度，直接请求视觉抓取。 */
-            s_grab_done = false;
-            UpperCP_SendTask("send");
+            App_SendVisionTask();
             s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
             return;
         }
@@ -551,14 +624,15 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        s_grab_done = false;
-        UpperCP_SendTask("send");
+        App_SendVisionTask();
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
          if (!s_grab_done) {
+            App_VisionCameraSearchTick();
             return;
         }
+        App_VisionCameraSearchReset();
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
@@ -588,8 +662,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_SCAN_B) {
             /* B 区反向视野同样不降低升降台，直接识别并抓取。 */
-            s_grab_done = false;
-            UpperCP_SendTask("send");
+            App_SendVisionTask();
             s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
             return;
         }
@@ -601,14 +674,15 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        s_grab_done = false;
-        UpperCP_SendTask("send");
+        App_SendVisionTask();
         s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
         if (!s_grab_done) {
+            App_VisionCameraSearchTick();
             return;
         }
+        App_VisionCameraSearchReset();
         s_route_index++;
         s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     }
