@@ -641,10 +641,10 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
 
             if (left_lane_dist < right_lane_dist) {
                 node_idx = left_lane_node;
-                action = APP_ACTION_NEGATIVE;
+                action = APP_ACTION_POSITIVE;
             } else {
                 node_idx = right_lane_node;
-                action = APP_ACTION_POSITIVE;
+                action = APP_ACTION_NEGATIVE;
             }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);

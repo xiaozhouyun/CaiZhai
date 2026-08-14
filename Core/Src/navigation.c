@@ -75,10 +75,13 @@ TiancanPid_t arrivedpid = {
 };
 
 #define ARRIVED_SETTLE_MS         800U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
-#define ARRIVED_MAX_ANGULAR       1.2f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
-#define ARRIVED_MIN_ANGULAR       0.2f          /**< 终点最小角速度限制 (rad/s)，一步(0.1s帧)旋转1.15°可落进死区，避免极限环振荡 */
-#define ARRIVED_FF_BASE           0.1f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
-#define ARRIVED_ERR_THRESH        0.015f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
+#define ARRIVED_FAST_ERR_THRESH   0.25f         /**< 终点调角大误差阈值 (rad)，大于约 14.3 度时快速转向 */
+#define ARRIVED_SLOW_ERR_THRESH   0.06f         /**< 终点调角小误差阈值 (rad)，小于约 3.4 度时低速接近 */
+#define ARRIVED_CROSS_CAPTURE     0.10f         /**< 终点调角过零捕获阈值 (rad)，小角度跨过目标即认为到位 */
+#define ARRIVED_FAST_ANGULAR      1.2f          /**< 终点调角大误差固定角速度 (rad/s) */
+#define ARRIVED_MID_ANGULAR       0.9f         /**< 终点调角中误差固定角速度 (rad/s) */
+#define ARRIVED_SLOW_ANGULAR      0.6f         /**< 终点调角近目标固定角速度 (rad/s) */
+#define ARRIVED_ERR_THRESH        0.015f        /**< 最终角度对齐允许最大误差 (rad)，约 0.86 度 */
 
 /* 状态机全局变量 */
 Navigation_State_t navigation_state = NAVIGATION_STATE_IDLE;
@@ -452,13 +455,10 @@ static void Navigation_HandleArrived(void)
 {
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
     static float last_err;
-    static TickType_t last_time;
     static TickType_t settle_start;  /**< 进入停稳阶段的时刻 */
     bool settling;                   /**< 当前是否处于停稳等待中 */
     float err;
-    float dt;
     float angular_speed;
-    TickType_t now;
 
     /* 首次进入 ARRIVED → 记录停稳起始时刻 */
     if (last_state != NAVIGATION_STATE_ARRIVED) {
@@ -466,15 +466,12 @@ static void Navigation_HandleArrived(void)
         settle_start = xTaskGetTickCount();
         last_state = NAVIGATION_STATE_ARRIVED;
         last_err = 0.0f;
-        last_time = settle_start;
     }
 
     /* 1. 优先停稳等待阶段：先保持零速，等待惯性彻底消除让车子完全停稳 */
     settling = ((xTaskGetTickCount() - settle_start) < pdMS_TO_TICKS(ARRIVED_SETTLE_MS));
     if (settling) {
         Chassis_SetSpeed(0.0f, 0.0f);
-        /* 停稳期间持续刷新 last_time，避免后续转圈阶段 dt 异常放大 */
-        last_time = xTaskGetTickCount();
         return;
     }
 
@@ -490,46 +487,24 @@ static void Navigation_HandleArrived(void)
     }
 
     /* --- 以下为转圈调角度阶段 --- */
-
-    now = xTaskGetTickCount();
-    dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
-    if (dt <= 0.0f || dt > 0.1f) {
-        dt = 0.01f;
+    if ((last_err * err < 0.0f) && (fabsf(err) < ARRIVED_CROSS_CAPTURE)) {
+        Navigation_Stop();
+        last_state = NAVIGATION_STATE_IDLE;
+        return;
     }
 
-    // /* 旋转过程中定期（每 500ms）自动清除堵转保护 */
-    // static TickType_t last_arrived_clog_clear = 0;
-    // if ((now - last_arrived_clog_clear) >= pdMS_TO_TICKS(500U)) {
-    //     Chassis_ClearClogProtection();
-    //     last_arrived_clog_clear = now;
-    // }
-
-    /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
-    angular_speed = -((*arrivedpid.kp) * err + (*arrivedpid.kd) * (err - last_err) / dt);
-
-    /* 静摩擦前馈：与 TargetAlign 同理，误差比例缩放，突破起步死区 */
-    {
-        float ff_ratio = fabsf(err) / (float)PI;
-        if (ff_ratio > 1.0f) ff_ratio = 1.0f;
-        angular_speed -= (err > 0.0f) ? (ARRIVED_FF_BASE * ff_ratio) : -(ARRIVED_FF_BASE * ff_ratio);
+    if (fabsf(err) > ARRIVED_FAST_ERR_THRESH) {
+        angular_speed = ARRIVED_FAST_ANGULAR;
+    } else if (fabsf(err) > ARRIVED_SLOW_ERR_THRESH) {
+        angular_speed = ARRIVED_MID_ANGULAR;
+    } else {
+        angular_speed = ARRIVED_SLOW_ANGULAR;
     }
 
-    if (angular_speed > ARRIVED_MAX_ANGULAR) {
-        angular_speed = ARRIVED_MAX_ANGULAR;
-    } else if (angular_speed < -ARRIVED_MAX_ANGULAR) {
-        angular_speed = -ARRIVED_MAX_ANGULAR;
-    }
-
-    /* 最小角速度限制：低于阈值的非零输出上提到 ±MIN，防止电机堵转或单边不转 */
-    if (angular_speed > 0.0f && angular_speed < ARRIVED_MIN_ANGULAR) {
-        angular_speed = ARRIVED_MIN_ANGULAR;
-    } else if (angular_speed < 0.0f && angular_speed > -ARRIVED_MIN_ANGULAR) {
-        angular_speed = -ARRIVED_MIN_ANGULAR;
-    }
+    angular_speed = (err > 0.0f) ? -angular_speed : angular_speed;
 
     Chassis_SetSpeed(0.0f, angular_speed);
     last_err = err;
-    last_time = now;
 }
 
 /**
