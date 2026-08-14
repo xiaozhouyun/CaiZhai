@@ -3,6 +3,7 @@
 #include "arms.h"
 #include "tiancan.h"
 #include "navigation.h"
+#include "hwt101_hal.h"
 #include "usart.h"
 #include "bujin.h"
 #include "voice.h"
@@ -41,21 +42,21 @@ volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
 volatile bool g_enable_grasp_logic =1;
 
-/* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
-volatile bool s_app_running;
-volatile bool s_stop_requested;
-static volatile bool s_grab_done;      /* 视觉动作机完成一次处理后置位 */
-static const AppWaypoint_t *s_route;   /* 当前执行路线；A 指向常量，C 指向下方静态副本 */
-static AppWaypoint_t s_dynamic_route[APP_ROUTE_C_MAX_WAYPOINTS]; /* 动态路线不能使用函数栈数组 */
-static uint8_t s_route_len;
-static uint8_t s_route_index;
-static AppMode_t s_route_next_mode;
-static uint32_t s_route_deadline;
-static bool s_qr_scan_started;
-static uint32_t s_qr_scan_deadline;
-static uint8_t s_qr_voice_index;
-static uint32_t s_qr_voice_deadline;
-static bool s_route_pour_sent;
+/* 内部状态变量：路径导航、视觉动作、二维码扫描和倒料流程的运行现场 */
+volatile bool s_app_running;           /* 应用路线运行标志：true 表示当前有路线任务在执行，停止或路线结束后清零 */
+volatile bool s_stop_requested;        /* 外部停止请求标志：按键/指令请求停车后置位，App_RunCurrentMode() 统一执行停止并清零 */
+static volatile bool s_grab_done;      /* 视觉抓取完成标志：ActionScheduler 完成一次 send/arm 处理后置位，路线状态机等待它继续下一步 */
+static const AppWaypoint_t *s_route;   /* 当前执行路线指针：A/B 指向常量路线，C/返程可指向 s_dynamic_route 动态路线副本 */
+static AppWaypoint_t s_dynamic_route[APP_ROUTE_C_MAX_WAYPOINTS]; /* C 区二维码顺序或返程临时路线缓存，避免使用函数栈数组 */
+static uint8_t s_route_len;            /* 当前路线的航点总数，用于判断 s_route_index 是否已经跑完 */
+static uint8_t s_route_index;          /* 当前正在执行的航点下标，到点并完成附加动作后递增 */
+static AppMode_t s_route_next_mode;    /* 当前路线完成后要切换到的下一个应用模式，通常用于 A/B/C/返程衔接 */
+static uint32_t s_route_deadline;      /* 非阻塞等待截止时刻，升降台、云台、倒料等延时状态共用该时间戳 */
+static bool s_qr_scan_started;         /* C 区二维码扫描是否已启动，防止在等待二维码期间重复发送扫描请求 */
+static uint32_t s_qr_scan_deadline;    /* C 区二维码扫描超时时刻，超过后使用默认路线继续执行 */
+static uint8_t s_qr_voice_index;       /* 二维码结果语音播报下标，按 fruits[] 顺序逐个播报位置编号 */
+static uint32_t s_qr_voice_deadline;   /* 下一次二维码位置语音允许播放的时刻，用于控制播报间隔 */
+static bool s_route_pour_sent;         /* C 区倒料点 pour 指令发送标志，确保同一个倒料等待阶段只发送一次 pour */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -264,6 +265,7 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
+            Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_SCAN_C);
             break;
@@ -402,7 +404,6 @@ static void App_RouteTick(void)
                 s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
                 App_RouteSetDelay(0U);
             }
-            // App_LogLiftTxStatus();
             return;
         }
     } else if (s_route_state == APP_ROUTE_WAIT_POUR) {
