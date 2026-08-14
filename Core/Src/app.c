@@ -127,7 +127,7 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
-    WAYPOINT(-2600.0f, 50.0f, PI/2, false),
+    WAYPOINT(-2600.0f, 0.0f, PI/2, false),
 };
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
@@ -144,7 +144,7 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1930.0f, 50.0f, 0, false),
+    WAYPOINT(-1930.0f, 0.0f, 0, false),
     WAYPOINT(-1930.0f, 400.0f, 0, 0),
     WAYPOINT(-1930.0f, 900.0f, 0, 0),
     WAYPOINT(-1930.0f, 1400.0f, 0, 0),
@@ -155,13 +155,14 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-2655.0f, 1400.0f, PI, 0),
     WAYPOINT(-2655.0f, 900.0f, PI, 0),
     WAYPOINT(-2655.0f, 400.0f, PI, 0),
-    WAYPOINT(-2655.0f, 50.0f, PI, false),
+    WAYPOINT(-2655.0f, 0.0f, PI, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
+static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
 
 /**
  * @brief 初始化应用层状态
@@ -272,9 +273,9 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_B:
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
-            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 50.0f, PI / 2.0f,
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 50.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 0.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2350.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
@@ -310,6 +311,15 @@ void App_RunCurrentMode(void)
                 PCA9685_Set270Angle(30.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
+                if (s_qr_voice_index < 8U) {
+                    if ((int32_t)(HAL_GetTick() - s_qr_voice_deadline) >= 0) {
+                        Voice_Num(30 + fruits[s_qr_voice_index]);
+                        s_qr_voice_index++;
+                        s_qr_voice_deadline = HAL_GetTick() + APP_QR_VOICE_INTERVAL_MS;
+                    }
+                    break;
+                }
+
                 PCA9685_Set270Angle(30.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             }
@@ -322,7 +332,7 @@ void App_RunCurrentMode(void)
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 50.0f;
+            s_dynamic_route[0].y_mm = 0.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
@@ -563,13 +573,39 @@ void App_NotifyGrabDone(void)
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。
  *          2. 依次把二维码位置 1~12 映射为环路节点和云台动作位，不重排、不合并。
- *          3. 每两个相邻目标之间比较顺/逆时针实际毫米路程，选择较短的一段环路。
- *          4. 保留目标点和防斜切拐角，启动非阻塞航线调度器完成多目标任务。
+ *          3. 位置 5~8 位于中间列，可从左右两条通道作业，按当前位置选择更近的停靠侧。
+ *          4. 每两个相邻目标之间比较顺/逆时针实际毫米路程，选择较短的一段环路。
+ *          5. 保留目标点和防斜切拐角，启动非阻塞航线调度器完成多目标任务。
  * 
  * @param  fruit_positions 8 个水果位置编号数组，每项范围为 1 ~ 12
  * @param  next_mode      完成后跳转的下一个模式
  * @return 0 成功启动，-1 参数错误
  */
+static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node)
+{
+    uint8_t next;
+    float cw_distance = 0.0f;
+    float ccw_distance = 0.0f;
+
+    next = from_node;
+    while (next != to_node) {
+        uint8_t following = (uint8_t)((next + 1U) % 12U);
+        cw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                       fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+        next = following;
+    }
+
+    next = from_node;
+    while (next != to_node) {
+        uint8_t following = (next == 0U) ? 11U : (uint8_t)(next - 1U);
+        ccw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                        fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+        next = following;
+    }
+
+    return (cw_distance <= ccw_distance) ? cw_distance : ccw_distance;
+}
+
 int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
                               AppMode_t next_mode)
 {
@@ -598,8 +634,18 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
             node_idx = (uint8_t)(5U - position);
             action = APP_ACTION_NEGATIVE;
         } else if (position >= 5U && position <= 8U) {
-            node_idx = (uint8_t)(9U - position);
-            action = APP_ACTION_POSITIVE;
+            uint8_t right_lane_node = (uint8_t)(9U - position);  /* 右通道 0~5 的左侧作业点 */
+            uint8_t left_lane_node = (uint8_t)(position + 2U);   /* 左通道 6~11 的右侧作业点 */
+            float right_lane_dist = App_RouteC_GetShortestRingDistance(curr, right_lane_node);
+            float left_lane_dist = App_RouteC_GetShortestRingDistance(curr, left_lane_node);
+
+            if (left_lane_dist < right_lane_dist) {
+                node_idx = left_lane_node;
+                action = APP_ACTION_NEGATIVE;
+            } else {
+                node_idx = right_lane_node;
+                action = APP_ACTION_POSITIVE;
+            }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);
             action = APP_ACTION_NEGATIVE;
