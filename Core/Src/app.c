@@ -28,13 +28,13 @@
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_QR_CAMERA_CENTER_DEG      60.0f  /* 二维码相机扫码俯仰角 */
-#define APP_QR_GIMBAL_LEFT_DEG       -30.0f  /* 二维码搜索左侧最大角度 */
-#define APP_QR_GIMBAL_RIGHT_DEG       30.0f  /* 二维码搜索右侧最大角度 */
-#define APP_QR_GIMBAL_STEP_DEG         2.0f  /* 二维码搜索水平云台每次步进 */
-#define APP_QR_SCAN_STEP_MS          180U    /* 二维码扫描舵机每一步的间隔，非阻塞慢速扫动 */
-#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -30 度 */
+#define APP_QR_GIMBAL_LEFT_DEG       -10.0f  /* 二维码搜索左侧最大角度 */
+#define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
+#define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
+#define APP_QR_SCAN_STEP_MS         1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
+#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -10 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
-#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +30 度 */
+#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +10 度 */
 #define APP_QR_SCAN_CENTER_FROM_RIGHT 3U     /* 扫码云台阶段：从右侧回中 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
@@ -628,19 +628,19 @@ void App_NotifyGrabDone(void)
  * @details C区 12 个节点的环形轨道拓扑结构示意图：
  * 
  *               (y = 2350)
- *      [6] <------------------ [5]
+ *      [5] <------------------ [6]
  *       |                       |
- *      [7]                     [4]
+ *      [4]                     [7]
  *       |                       |
- *      [8]                     [3]
+ *      [3]                     [8]
  *       |                       |
- *      [9]                     [2]
+ *      [2]                     [9]
  *       |                       |
- *     [10]                     [1]
+ *     [1]                     [10]
  *       |                       |
- *      [11] -----------------> [0]
+ *      [0] -----------------> [11]
  *               (y = 0)
- *   (x = -2655)             (x = -1900)
+ *   (x = -1900)             (x = -2655)
  * 
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。
@@ -704,7 +704,7 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
 
         if (position >= 1U && position <= 4U) {
             node_idx = (uint8_t)(5U - position);
-            action = APP_ACTION_POSITIVE;
+            action = APP_ACTION_NEGATIVE;
         } else if (position >= 5U && position <= 8U) {
             uint8_t right_lane_node = (uint8_t)(9U - position);  /* 右通道 0~5 的左侧作业点 */
             uint8_t left_lane_node = (uint8_t)(position + 2U);   /* 左通道 6~11 的右侧作业点 */
@@ -716,11 +716,11 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
                 action = APP_ACTION_POSITIVE;
             } else {
                 node_idx = right_lane_node;
-                action = APP_ACTION_POSITIVE;
+                action = APP_ACTION_NEGATIVE;
             }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);
-            action = APP_ACTION_NEGATIVE;
+            action = APP_ACTION_POSITIVE;
         } else {
             return -1;
         }
