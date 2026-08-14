@@ -24,9 +24,18 @@
 #define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
-#define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
+#define APP_QR_CAMERA_CENTER_DEG      60.0f  /* 二维码相机扫码俯仰角 */
+#define APP_QR_GIMBAL_LEFT_DEG       -30.0f  /* 二维码搜索左侧最大角度 */
+#define APP_QR_GIMBAL_RIGHT_DEG       30.0f  /* 二维码搜索右侧最大角度 */
+#define APP_QR_GIMBAL_STEP_DEG         2.0f  /* 二维码搜索水平云台每次步进 */
+#define APP_QR_SCAN_STEP_MS          180U    /* 二维码扫描舵机每一步的间隔，非阻塞慢速扫动 */
+#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -30 度 */
+#define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
+#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +30 度 */
+#define APP_QR_SCAN_CENTER_FROM_RIGHT 3U     /* 扫码云台阶段：从右侧回中 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
                                      ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE), \
@@ -57,6 +66,9 @@ static uint32_t s_qr_scan_deadline;    /* C 区二维码扫描超时时刻，超
 static uint8_t s_qr_voice_index;       /* 二维码结果语音播报下标，按 fruits[] 顺序逐个播报位置编号 */
 static uint32_t s_qr_voice_deadline;   /* 下一次二维码位置语音允许播放的时刻，用于控制播报间隔 */
 static bool s_route_pour_sent;         /* C 区倒料点 pour 指令发送标志，确保同一个倒料等待阶段只发送一次 pour */
+static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转、左回中、右转、右回中循环 */
+static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
+static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -145,23 +157,24 @@ static const AppWaypoint_t k_route_b[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1930.0f, 0.0f, 0, false),
-    WAYPOINT(-1930.0f, 400.0f, 0, 0),
-    WAYPOINT(-1930.0f, 900.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1400.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1900.0f, 0, 0),
+    WAYPOINT(-1930.0f, 390.0f, 0, 0),
+    WAYPOINT(-1930.0f, 890.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1390.0f, 0, 0),
+    WAYPOINT(-1930.0f, 1890.0f, 0, 0),
     WAYPOINT(-1930.0f, 2350.0f, 0, false),
-    WAYPOINT(-2655.0f, 2350.0f, PI, 0),
-    WAYPOINT(-2655.0f, 1900.0f, PI, 0),
-    WAYPOINT(-2655.0f, 1400.0f, PI, 0),
-    WAYPOINT(-2655.0f, 900.0f, PI, 0),
-    WAYPOINT(-2655.0f, 400.0f, PI, 0),
-    WAYPOINT(-2655.0f, 0.0f, PI, false),
+    WAYPOINT(-2655.0f, 2350.0f, 0, 0),
+    WAYPOINT(-2655.0f, 1890.0f, 0, 0),
+    WAYPOINT(-2655.0f, 1390.0f, 0, 0),
+    WAYPOINT(-2655.0f, 890.0f, 0, 0),
+    WAYPOINT(-2655.0f, 390.0f, 0, 0),
+    WAYPOINT(-2655.0f, 0.0f, 0, false),
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
+static void App_QrScanSweepTick(void);
 static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
 
 /**
@@ -179,6 +192,9 @@ void App_Init(void)
     s_qr_scan_started = false;
     s_qr_voice_index = 0U;
     s_route_pour_sent = false;
+    s_qr_scan_phase = APP_QR_SCAN_LEFT;
+    s_qr_gimbal_angle = 0.0f;
+    s_qr_scan_step_deadline = 0U;
 }
 
 /**
@@ -189,8 +205,56 @@ void App_SetMode(AppMode_t mode)
     if (mode == APP_MODE_SCAN_C) {
         s_qr_scan_started = false;
         s_qr_voice_index = 0U;
+        s_qr_scan_phase = APP_QR_SCAN_LEFT;
+        s_qr_gimbal_angle = 0.0f;
+        s_qr_scan_step_deadline = 0U;
     }
     g_app_mode = mode;
+}
+
+static void App_QrScanSweepTick(void)
+{
+    if ((int32_t)(HAL_GetTick() - s_qr_scan_step_deadline) < 0) {
+        return;
+    }
+
+    s_qr_scan_step_deadline = HAL_GetTick() + APP_QR_SCAN_STEP_MS;
+
+    switch (s_qr_scan_phase) {
+    case APP_QR_SCAN_LEFT:
+        s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle <= APP_QR_GIMBAL_LEFT_DEG) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_LEFT_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_LEFT;
+        }
+        break;
+
+    case APP_QR_SCAN_CENTER_FROM_LEFT:
+        s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle >= 0.0f) {
+            s_qr_gimbal_angle = 0.0f;
+            s_qr_scan_phase = APP_QR_SCAN_RIGHT;
+        }
+        break;
+
+    case APP_QR_SCAN_RIGHT:
+        s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle >= APP_QR_GIMBAL_RIGHT_DEG) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_RIGHT_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_RIGHT;
+        }
+        break;
+
+    default:
+        s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle <= 0.0f) {
+            s_qr_gimbal_angle = 0.0f;
+            s_qr_scan_phase = APP_QR_SCAN_LEFT;
+        }
+        break;
+    }
+
+    (void)PCA9685_Set180Angle(7U, s_qr_gimbal_angle);
 }
 
 /**
@@ -253,9 +317,9 @@ void App_RunCurrentMode(void)
     switch (g_app_mode) {
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
-        // Chassis_SetSpeed(0.0f,0.6f);
+        Chassis_SetSpeed(0.0f,0.6f);
       
-         ActionScheduler_StartGimbalMove(90.0f, 1000U);
+        //  ActionScheduler_StartGimbalMove(90.0f, 1000U);
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -290,7 +354,11 @@ void App_RunCurrentMode(void)
         case APP_MODE_SCAN_C:
             if (!s_qr_scan_started) {
                 UpperCP_ResetQrResult();
-                PCA9685_Set270Angle(60.0f); /* 二维码相机转向正前方 */
+                PCA9685_Set270Angle(APP_QR_CAMERA_CENTER_DEG); /* 二维码相机保持扫码俯仰角 */
+                PCA9685_Set180Angle(7U, 0.0f); /* 扫码前水平云台回中，避免沿用上一次偏角 */
+                s_qr_scan_phase = APP_QR_SCAN_LEFT;
+                s_qr_gimbal_angle = 0.0f;
+                s_qr_scan_step_deadline = HAL_GetTick() + APP_QR_SCAN_STEP_MS;
                 UpperCP_SendTask("scan");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_TIMEOUT_MS;
                 s_qr_voice_deadline = HAL_GetTick();
@@ -309,6 +377,7 @@ void App_RunCurrentMode(void)
                 }
 
                 PCA9685_Set270Angle(30.0f);
+                PCA9685_Set180Angle(7U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
                 if (s_qr_voice_index < 8U) {
@@ -320,14 +389,17 @@ void App_RunCurrentMode(void)
                     break;
                 }
 
-                PCA9685_Set270Angle(30.0f);
+                PCA9685_Set270Angle(35.0f);
+                PCA9685_Set180Angle(7U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
+            } else {
+                App_QrScanSweepTick();
             }
             break;
 
         case APP_MODE_ROUTE_C:
             /* 扫码完成或超时后，使用当前 fruits 数组启动 C 区规划。 */
-            App_RouteC_PlanAndRun(fruits, APP_MODE_ROUTE_B);
+            App_RouteC_PlanAndRun(fruits, APP_MODE_BACK);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
@@ -632,7 +704,7 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
 
         if (position >= 1U && position <= 4U) {
             node_idx = (uint8_t)(5U - position);
-            action = APP_ACTION_NEGATIVE;
+            action = APP_ACTION_POSITIVE;
         } else if (position >= 5U && position <= 8U) {
             uint8_t right_lane_node = (uint8_t)(9U - position);  /* 右通道 0~5 的左侧作业点 */
             uint8_t left_lane_node = (uint8_t)(position + 2U);   /* 左通道 6~11 的右侧作业点 */
@@ -644,7 +716,7 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
                 action = APP_ACTION_POSITIVE;
             } else {
                 node_idx = right_lane_node;
-                action = APP_ACTION_NEGATIVE;
+                action = APP_ACTION_POSITIVE;
             }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);

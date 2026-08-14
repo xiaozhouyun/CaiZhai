@@ -40,6 +40,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
                 s_app_running = true;
                 s_stop_requested = false;
                 App_SetMode(APP_MODE_ROUTE_A);
+//                   App_SetMode(APP_MODE_TEST);
         }
     }
 }

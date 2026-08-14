@@ -50,11 +50,13 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
-#define MOVE_MIN_LINEAR           10.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MIN_SPEED            20.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
+#define MOVE_ARRIVE_DIST          20.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
+#define MOVE_MIN_LINEAR           40.0f         /**< 减速时最小保证线速度 (mm/s) */
+#define MOVE_MIN_SPEED            40.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
 #define MOVE_MAX_ANGULAR          1.2f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
+#define MOVE_LATERAL_K            0.001f        /**< 直线横向偏差补偿系数：每偏 1mm 修正 0.001rad 目标航向 */
+#define MOVE_LATERAL_MAX_CORR     0.12f         /**< 直线横向偏差最大航向修正量 (rad)，约 6.9 度 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
@@ -78,9 +80,9 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_FAST_ERR_THRESH   0.25f         /**< 终点调角大误差阈值 (rad)，大于约 14.3 度时快速转向 */
 #define ARRIVED_SLOW_ERR_THRESH   0.06f         /**< 终点调角小误差阈值 (rad)，小于约 3.4 度时低速接近 */
 #define ARRIVED_CROSS_CAPTURE     0.10f         /**< 终点调角过零捕获阈值 (rad)，小角度跨过目标即认为到位 */
-#define ARRIVED_FAST_ANGULAR      1.2f          /**< 终点调角大误差固定角速度 (rad/s) */
-#define ARRIVED_MID_ANGULAR       0.9f         /**< 终点调角中误差固定角速度 (rad/s) */
-#define ARRIVED_SLOW_ANGULAR      0.6f         /**< 终点调角近目标固定角速度 (rad/s) */
+#define ARRIVED_FAST_ANGULAR      0.9f          /**< 终点调角大误差固定角速度 (rad/s) */
+#define ARRIVED_MID_ANGULAR       0.6f         /**< 终点调角中误差固定角速度 (rad/s) */
+#define ARRIVED_SLOW_ANGULAR      0.3f         /**< 终点调角近目标固定角速度 (rad/s) */
 #define ARRIVED_ERR_THRESH        0.015f        /**< 最终角度对齐允许最大误差 (rad)，约 0.86 度 */
 
 /* 状态机全局变量 */
@@ -356,6 +358,9 @@ static void Navigation_HandleMoving(void)
     float angular_speed;
     float target_linear_speed;
     float angular_ratio;
+    float heading_angle;
+    float lateral_err;
+    float lateral_corr;
     TickType_t now;
 
     /* 到达目标点判定半径内，说明行进完成，进入终点角度微调状态 */
@@ -376,8 +381,17 @@ static void Navigation_HandleMoving(void)
     }
     last_state = NAVIGATION_STATE_MOVING;
 
-    /* 纠偏误差：整个航段固定使用起点到终点的方位角，避免接近终点时动态瞄准导致路径走成弧线。 */
-    float heading_angle = atan2f(target.x - start.x, target.y - start.y);
+    /* 纠偏误差：先固定使用起点到终点的方位角，再叠加横向偏差补偿把车拉回原直线。 */
+    heading_angle = atan2f(target.x - start.x, target.y - start.y);
+    lateral_err = sinf(heading_angle) * (g_robot_pos.y - start.y) -
+                  cosf(heading_angle) * (g_robot_pos.x - start.x);
+    lateral_corr = lateral_err * MOVE_LATERAL_K;
+    if (lateral_corr > MOVE_LATERAL_MAX_CORR) {
+        lateral_corr = MOVE_LATERAL_MAX_CORR;
+    } else if (lateral_corr < -MOVE_LATERAL_MAX_CORR) {
+        lateral_corr = -MOVE_LATERAL_MAX_CORR;
+    }
+    heading_angle = Navigation_NormalizeRad(heading_angle + lateral_corr);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
     g_nav_move_err_rad = err;
@@ -543,6 +557,10 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
 
     /* 加速度 acc 设为 100，适中刹车力度，既无迟滞拖拽，又不会硬锁死导致轮胎打滑甩尾 */
     uint8_t acc = 250U;
+
+    if (fabsf(linear_vel_mm_s) < 1.0f && fabsf(angular_vel_rad_s) > 0.01f) {
+    acc = 80U;   /* 原地旋转降低加速度，减小冲击和噪音 */
+    }
 
     /* 控制下发：低速死区过滤后发送，同时下发并设置同步标志 */
     Emm_V5_Vel_Control(left_head, left_dir, send_left_rpm, acc, true);
