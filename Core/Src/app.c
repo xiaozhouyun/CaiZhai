@@ -168,12 +168,12 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1930.0f, 0.0f, 0, false),
-    WAYPOINT(-1930.0f, 390.0f, 0, 0),
-    WAYPOINT(-1930.0f, 890.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1390.0f, 0, 0),
-    WAYPOINT(-1930.0f, 1890.0f, 0, 0),
-    WAYPOINT(-1930.0f, 2350.0f, 0, false),
+    WAYPOINT(-1980.0f, 0.0f, 0, false),
+    WAYPOINT(-1980.0f, 390.0f, 0, 0),
+    WAYPOINT(-1980.0f, 890.0f, 0, 0),
+    WAYPOINT(-1980.0f, 1390.0f, 0, 0),
+    WAYPOINT(-1980.0f, 1890.0f, 0, 0),
+    WAYPOINT(-1980.0f, 2350.0f, 0, false),
     WAYPOINT(-2655.0f, 2350.0f, 0, 0),
     WAYPOINT(-2655.0f, 1890.0f, 0, 0),
     WAYPOINT(-2655.0f, 1390.0f, 0, 0),
@@ -504,7 +504,7 @@ void App_RunCurrentMode(void)
                     break;
                 }
 
-                PCA9685_Set270Angle(30.0f);
+                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 PCA9685_Set180Angle(7U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
@@ -517,7 +517,7 @@ void App_RunCurrentMode(void)
                     break;
                 }
 
-                PCA9685_Set270Angle(35.0f);
+                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 PCA9685_Set180Angle(7U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C);
             } else {
@@ -591,7 +591,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
             !s_route_pour_sent &&
-            s_route[s_route_index].x_mm == -2655.0f &&
+            s_route[s_route_index].x_mm == -2605.0f &&
             s_route[s_route_index].y_mm == 2350.0f) {
             UpperCP_SendTask("pour");
             s_route_pour_sent = true;
@@ -769,7 +769,7 @@ void App_NotifyGrabDone(void)
  *       |                       |
  *      [0] -----------------> [11]
  *               (y = 0)
- *   (x = -1900)             (x = -2655)
+ *   (x = -1900)             (x = -2605)
  * 
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。

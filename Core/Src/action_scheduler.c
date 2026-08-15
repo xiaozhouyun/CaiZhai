@@ -165,6 +165,13 @@ static void ActionScheduler_Debug(const char *event, uint8_t command)
                 TofData);
 }
 
+static void ActionScheduler_SetCameraCenterIfNeeded(float target_angle_deg)
+{
+    if (target_angle_deg == 0.0f) {
+        (void)PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
+    }
+}
+
 /*
  * 通道7每个 Task07 Tick 只更新一次插补目标。
  * 它使用非阻塞的 PCA9685_Set180Angle()，不能使用内部带 vTaskDelay 的 Smooth 接口。
@@ -186,6 +193,7 @@ static void ActionScheduler_GimbalTick(void)
         s_gimbal_lift_pending = false;
         s_gimbal_start_angle = PCA9685_Get180Angle(7U);
         s_gimbal_start_tick = HAL_GetTick();
+        ActionScheduler_SetCameraCenterIfNeeded(s_gimbal_target_angle);
         s_gimbal_moving = true;
         ActionScheduler_Debug("GIMBAL_LIFT_DONE", 0U);
     }
@@ -200,6 +208,7 @@ static void ActionScheduler_GimbalTick(void)
      */
     elapsed = HAL_GetTick() - s_gimbal_start_tick;
     if (elapsed >= s_gimbal_duration) {
+        ActionScheduler_SetCameraCenterIfNeeded(s_gimbal_target_angle);
         (void)PCA9685_Set180Angle(7U, s_gimbal_target_angle);
         s_gimbal_moving = false;
         ActionScheduler_Debug("GIMBAL_DONE", 0U);
@@ -345,6 +354,7 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     s_gimbal_start_angle = PCA9685_Get180Angle(7U);
     s_gimbal_start_tick = HAL_GetTick();
     if (duration_ms == 0U || s_gimbal_start_angle == s_gimbal_target_angle) {
+        ActionScheduler_SetCameraCenterIfNeeded(target_angle_deg);
         (void)PCA9685_Set180Angle(7U, target_angle_deg);
         s_gimbal_moving = false;
         s_gimbal_lift_pending = false;
