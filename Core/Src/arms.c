@@ -171,7 +171,7 @@ void Arm_ExtendZero(void)
   */
 void ZhuaZi_close(void)
 {
-    (void)PCA9685_Set180AngleSmooth(5U, 10.0f, 100U, 10U);
+    (void)PCA9685_Set180AngleSmooth(5U, 5.0f, 100U, 10U);
 }
 
 /**

@@ -267,11 +267,16 @@ void StartTask02(void *argument)
       oled_print(0, 0, 16, "X=%.2f", g_robot_pos.x);
       oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
       oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
+      oled_print(0, 6, 16, "tof=%.2f", TofData / 10.0f );
       {
-        {
-        float vofa_data[4] = {g_robot_pos.x, g_robot_pos.y, g_robot_pos.yaw, (*anglepid.target) * 180.0f / 3.1415926f};
-        Vofa_SendFirewater(vofa_data, 4);
-      }
+        float vofa_data[5] = {
+          g_robot_pos.x,
+          g_robot_pos.y,
+          g_robot_pos.yaw,
+          (*anglepid.target) * 180.0f / 3.1415926f,
+          PCA9685_Get180Angle(6U)
+        };
+        Vofa_SendFirewater(vofa_data, 5);
       }
     }
     // Tiancan_Process();

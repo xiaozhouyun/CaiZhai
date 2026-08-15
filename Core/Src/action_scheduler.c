@@ -31,6 +31,7 @@
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
 #define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)
 #define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)
+#define ARM_EXTEND_TOF_OFFSET_CM      (7.0f)
 
 /*
  * 机械动作反应时间（单位：ms）。
@@ -236,7 +237,7 @@ static void ActionScheduler_SetDeadline(uint32_t delay_ms)
 void ActionScheduler_SetExtendCm(float distance_cm)
 {
     /*
-     * 在“当前伸出量”的基础上再移动 distance_cm。
+     * 在“当前伸出量”的基础上再移动 ToF 距离，并统一补偿 7cm 机械误差。
      * 注意这里不是设置绝对伸出长度，而是通过当前角度反推已伸出距离，再叠加目标增量。
      */
     float current = PCA9685_Get180Angle(6U);
@@ -249,7 +250,8 @@ void ActionScheduler_SetExtendCm(float distance_cm)
         dist_mm = 0.0f;
     }
     target = ARM_EXTEND_MIN_ANGLE_DEG
-           + (dist_mm + distance_cm * 10.0f) / ARM_EXTEND_TOTAL_RANGE_MM
+           + (dist_mm + (distance_cm + ARM_EXTEND_TOF_OFFSET_CM) * 10.0f)
+           / ARM_EXTEND_TOTAL_RANGE_MM
            * ARM_EXTEND_TOTAL_RANGE_DEG;
     if (target > ARM_EXTEND_MAX_ANGLE_DEG) {
         /* 目标距离过远时卡在机械最大伸出角，保护机构。 */
@@ -386,13 +388,6 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
          * 对准微调命令可由相机下一帧重发；抓取/跳过/坏果命令不能丢失。
          * 缓存只保留最新一条关键命令，当前动作结束后自动执行。
          */
-        if (command == 5U &&
-            (s_state == ACTION_SKIP_WAIT_EXTEND ||
-             s_state == ACTION_SKIP_WAIT_LIFT ||
-             s_state == ACTION_SKIP_WAIT_ROTATE)) {
-            ActionScheduler_Debug("DROP_SKIP_BUSY", command);
-            return;
-        }
         if (command == 0U || command == 5U || command == 6U) {
             s_pending_command = command;
             s_pending_command_valid = true;
@@ -514,7 +509,7 @@ void ActionScheduler_Tick(void)
         break;
     case ACTION_GRAB_WAIT_OPEN:
         /* 以当前测距值计算伸臂目标；TofData 单位按 mm 使用，/10 后换成 cm。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 7.0f);
+        ActionScheduler_SetExtendCm(TofData / 10.0f);
         s_state = ACTION_GRAB_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
         ActionScheduler_Debug("GRAB_EXTEND", 0U);
@@ -616,8 +611,8 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_BAD_WAIT_DISTANCE:
-        /* 坏果与正常果的差别是目标伸臂量少 1cm，后续均复用放置流程。 */
-        ActionScheduler_SetExtendCm(TofData / 10.0f + 5.0f);
+        /* 坏果流程同样使用函数内统一的 7cm ToF 补偿。 */
+        ActionScheduler_SetExtendCm(TofData / 10.0f);
         (void)PCA9685_Set180Angle(5U, 3.0f);
         s_state = ACTION_BAD_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_CLAW_CLOSE_MS);
