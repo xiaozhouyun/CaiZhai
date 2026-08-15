@@ -243,8 +243,8 @@ void UpperCP_RX(void)
         return;
     }
 
-    /* 将上位机 UpperCP 接收到的原始命令数据通过 VOFA+ 打印输出 */
-    Vofa_PrintUpperCPData(uppercp_cmd_buf);
+    // /* 将上位机 UpperCP 接收到的原始命令数据通过 VOFA+ 打印输出 */
+    // Vofa_PrintUpperCPData(uppercp_cmd_buf);
 
     ret = strtok(uppercp_cmd_buf, ":");
     if (ret != NULL) {

@@ -234,7 +234,7 @@ void StartDefaultTask(void *argument)
       Emm_V5_En_Control(5, true, true);
       Emm_V5_Synchronous_motion(0);
       Navigation_Stop();
-             vTaskDelay(pdMS_TO_TICKS(2000U));
+      vTaskDelay(pdMS_TO_TICKS(2000U));
 //        s_app_running = true;
 //        s_stop_requested = false;
 //        App_SetMode(APP_MODE_ROUTE_A);
@@ -274,7 +274,7 @@ void StartTask02(void *argument)
       }
       }
     }
-    Tiancan_Process();
+    // Tiancan_Process();
     osDelay(100);
  
   }
