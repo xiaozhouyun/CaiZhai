@@ -37,6 +37,7 @@
 #define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_STEP_MS         1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
+#define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.5° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -10 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
 #define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +10 度 */
@@ -179,6 +180,15 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-2615.0f, 380.0f, 0, 0),
     WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
+
+static float App_CurrentMoveHeadingBiasRad(void)
+{
+    /* A 区第 6 个航点对应从 (0,0) 倒车到 C 区扫码点的长直线。 */
+    if (s_route == k_route_a && s_route_index == 5U) {
+        return APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD;
+    }
+    return 0.0f;
+}
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
@@ -539,7 +549,8 @@ static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
     s_route_index = 0U;
     s_route_next_mode = next_mode;
     s_route_state = APP_ROUTE_WAIT_NAVIGATION;
-    (void)Navigation_Request(s_route[0].x_mm, s_route[0].y_mm, s_route[0].yaw_rad);
+    (void)Navigation_Request(s_route[0].x_mm, s_route[0].y_mm, s_route[0].yaw_rad,
+                             App_CurrentMoveHeadingBiasRad());
 }
 
 static void App_RouteTick(void)
@@ -698,7 +709,8 @@ static void App_RouteTick(void)
         /* 本航点已完成，向导航任务请求下一航点；到点结果由下一轮 Tick 检查。 */
         (void)Navigation_Request(s_route[s_route_index].x_mm,
                                  s_route[s_route_index].y_mm,
-                                 s_route[s_route_index].yaw_rad);
+                                 s_route[s_route_index].yaw_rad,
+                                 App_CurrentMoveHeadingBiasRad());
         return;
     }
 

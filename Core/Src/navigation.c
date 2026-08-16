@@ -99,6 +99,9 @@ volatile float g_nav_move_angular_rad_s;                        /**< VOFA 直线
 
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
+
+
+static float s_move_heading_bias_rad;                            /* 当前路段直线行进航向补偿，单位：rad */
 static bool s_is_reverse_mode = false;                           /* 当前离散导航周期的实际倒车模式标志 */
 volatile bool g_enable_auto_reverse = true;                      /* 自动倒车使能全局开关：默认打开(true)，允许偏差大时直接倒车行驶 */
 
@@ -204,7 +207,8 @@ void Navigation_TaskTick(void)
 /**
  * @brief 发送导航任务请求
  */
-int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad)
+int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad,
+                          float move_heading_bias_rad)
 {
     /* 如果当前正在执行其他导航任务，直接拒绝 */
     if (navigation_state != NAVIGATION_STATE_IDLE) {
@@ -215,6 +219,7 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     target.y = target_y_mm;
     target.yaw = target_yaw_rad;
     start = g_robot_pos;
+    s_move_heading_bias_rad = move_heading_bias_rad;
     g_nav_move_err_rad = 0.0f;
     g_nav_move_angular_rad_s = 0.0f;
 
@@ -283,10 +288,12 @@ static void Navigation_HandleTargetAlign(void)
         float heading_angle = atan2f(target.x - start.x, target.y - start.y);
         if (s_is_reverse_mode) {
             /* 倒车模式：车尾正对目标点 */
-            *anglepid.target = Navigation_NormalizeRad(heading_angle + NAV_PI);
+            *anglepid.target = Navigation_NormalizeRad(heading_angle + NAV_PI +
+                                                       s_move_heading_bias_rad);
         } else {
             /* 前进模式：车头正对目标点 */
-            *anglepid.target = heading_angle;
+            *anglepid.target = Navigation_NormalizeRad(heading_angle +
+                                                       s_move_heading_bias_rad);
         }
         last_err = 0.0f;
         last_time = xTaskGetTickCount();
@@ -391,7 +398,8 @@ static void Navigation_HandleMoving(void)
     } else if (lateral_corr < -MOVE_LATERAL_MAX_CORR) {
         lateral_corr = -MOVE_LATERAL_MAX_CORR;
     }
-    heading_angle = Navigation_NormalizeRad(heading_angle + lateral_corr);
+    heading_angle = Navigation_NormalizeRad(heading_angle + lateral_corr +
+                                            s_move_heading_bias_rad);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
     g_nav_move_err_rad = err;

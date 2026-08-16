@@ -105,9 +105,11 @@ void Navigation_TaskTick(void);
  * @param target_x_mm 目标 X 坐标 (mm)
  * @param target_y_mm 目标 Y 坐标 (mm)
  * @param target_yaw_rad 目标最终朝向角 (弧度)
+ * @param move_heading_bias_rad 当前路段直线行进航向补偿 (弧度)
  * @return 0 成功启动导航请求，-1 当前导航正忙
  */
-int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad);
+int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad,
+                          float move_heading_bias_rad);
 
 /**
  * @brief 检查导航模块是否处于空闲状态
