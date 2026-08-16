@@ -166,18 +166,18 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1980.0f, 0.0f, 0, false),
-    WAYPOINT(-1980.0f, 380.0f, 0, 0),
-    WAYPOINT(-1980.0f, 880.0f, 0, 0),
-    WAYPOINT(-1980.0f, 1380.0f, 0, 0),
-    WAYPOINT(-1980.0f, 1880.0f, 0, 0),
-    WAYPOINT(-1980.0f, 2300.0f, 0, false),
-    WAYPOINT(-2655.0f, 2300.0f, 0, 0),
-    WAYPOINT(-2655.0f, 1880.0f, 0, 0),
-    WAYPOINT(-2655.0f, 1380.0f, 0, 0),
-    WAYPOINT(-2655.0f, 880.0f, 0, 0),
-    WAYPOINT(-2655.0f, 380.0f, 0, 0),
-    WAYPOINT(-2655.0f, 0.0f, 0, false),
+    WAYPOINT(-1815.0f, 0.0f, 0, false),//左起点
+    WAYPOINT(-1815.0f, 380.0f, 0, 0),
+    WAYPOINT(-1815.0f, 880.0f, 0, 0),
+    WAYPOINT(-1815.0f, 1380.0f, 0, 0),
+    WAYPOINT(-1815.0f, 1880.0f, 0, 0),
+    WAYPOINT(-1815.0f, 2300.0f, 0, 0),//左拐点
+    WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
+    WAYPOINT(-2615.0f, 1880.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1380.0f, 0, 0),
+    WAYPOINT(-2615.0f, 880.0f, 0, 0),
+    WAYPOINT(-2615.0f, 380.0f, 0, 0),
+    WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
@@ -558,7 +558,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
             !s_route_pour_sent &&
-            s_route[s_route_index].x_mm == -2605.0f &&
+            s_route[s_route_index].x_mm == -2615.0f &&
             s_route[s_route_index].y_mm == 2300.0f) {
             UpperCP_SendTask("pour");
             s_route_pour_sent = true;
