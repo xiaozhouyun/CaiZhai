@@ -89,6 +89,12 @@ float Navigation_NormalizeDeg(float angle);
 void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg);
 
 /**
+ * @brief 仅校准导航 Y 坐标，不改变 X 坐标和当前航向
+ * @param y_mm 新的 Y 坐标，单位：mm
+ */
+void Navigation_SetY(float y_mm);
+
+/**
  * @brief 根据轮式里程计测得的单步位移量和陀螺仪测得的偏航角，更新导航位置
  * @param delta_mm 单步内的中心位移量，单位：mm
  * @param yaw_deg 陀螺仪或里程计融合后的绝对偏航角，单位：度

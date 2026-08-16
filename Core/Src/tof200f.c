@@ -12,6 +12,8 @@ static uint8_t tof200f_start_single[] = {0x01, 0x03, 0x00, 0x10, 0x00, 0x01, 0x8
 #define TOF200F_RX_FRAME_LEN 7
 
 volatile float TofData = 0.0f;
+/* 有效测距帧序号：只在 TofData 成功更新后递增，不能把错误帧当成新数据。 */
+volatile uint32_t TofFrameSeq = 0U;
 
 static uint8_t tof200f_rx_buf[TOF200F_RX_FRAME_LEN];
 static uint8_t tof200f_rx_index = 0;
@@ -48,6 +50,7 @@ void TOF200F_Init(void)
 {
     tof200f_rx_index = 0U;
     TofData = 0.0f;
+    TofFrameSeq = 0U;
 
     __HAL_UART_CLEAR_OREFLAG(&huart1);
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
@@ -122,6 +125,8 @@ void TOF200F_UartRxByte(uint8_t data)
             if (raw_dist > 0U && raw_dist < 2500U)
             {
                 TofData = (float)raw_dist;
+                /* 先写距离、后递增序号，使任务能够通过前后两次读取序号检查数据一致性。 */
+                TofFrameSeq++;
             }
         }
 

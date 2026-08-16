@@ -10,6 +10,7 @@
 #include "pca9685.h"
 #include "UpperCP.h"
 #include "action_scheduler.h"
+#include "tof200f.h"
 #include "cmsis_os.h"
 #include "vofa.h"
 #include <math.h>
@@ -37,7 +38,13 @@
 #define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_STEP_MS         1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
-#define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.5° */
+#define APP_C_TOF_TARGET_MM          200.0f   /* 车尾 TOF 到 C 区底部挡板的目标距离，单位：mm */
+#define APP_C_TOF_TOLERANCE_MM        10.0f   /* 校准允许误差：190~210mm 均视为进入目标范围 */
+#define APP_C_TOF_SPEED_MM_S          50.0f   /* 校准时前后移动的低速线速度，单位：mm/s */
+#define APP_C_TOF_TIMEOUT_MS        10000U     /* 整个校准流程最长时间，超时停车并中止路线 */
+#define APP_C_TOF_FRAME_STALE_MS     300U     /* 持续移动时超过 300ms 无新帧，立即停车等待数据 */
+#define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
+#define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -10 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
 #define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +10 度 */
@@ -80,6 +87,12 @@ static bool s_vision_camera_search_active; /* A/C 区 send 后无上位机消息
 static uint32_t s_vision_send_tick;     /* 最近一次 A/C 区 send 下发时刻 */
 static uint32_t s_vision_send_rx_count; /* send 下发时记录的上位机 UART5 接收字节计数 */
 static float s_vision_camera_base_angle; /* send 下发时摄像头俯仰基准角 */
+static uint8_t s_route_c_start_node_idx; /* 本次 C 区路线入口节点：0=左下入口，11=右下入口 */
+static bool s_c_tof_cal_started;         /* 是否已建立本轮 TOF 校准的时间和帧序号基准 */
+static uint8_t s_c_tof_stable_frames;    /* 连续落入 190~210mm 范围的有效帧计数 */
+static uint32_t s_c_tof_last_seq;        /* 校准状态机最近一次处理的 TofFrameSeq */
+static uint32_t s_c_tof_start_tick;      /* 本轮校准起始时刻，用于 5s 总超时保护 */
+static uint32_t s_c_tof_last_frame_tick; /* 最近一次有效新帧时刻，用于运动中的断帧停车保护 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -167,12 +180,12 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1815.0f, 0.0f, 0, false),//左起点
-    WAYPOINT(-1815.0f, 380.0f, 0, 0),
-    WAYPOINT(-1815.0f, 880.0f, 0, 0),
-    WAYPOINT(-1815.0f, 1380.0f, 0, 0),
-    WAYPOINT(-1815.0f, 1880.0f, 0, 0),
-    WAYPOINT(-1815.0f, 2300.0f, 0, 0),//左拐点
+    WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
+    WAYPOINT(-1965.0f, 380.0f, 0, 0),
+    WAYPOINT(-1965.0f, 880.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1380.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1880.0f, 0, 0),
+    WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
     WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
     WAYPOINT(-2615.0f, 1880.0f, 0, 0),
     WAYPOINT(-2615.0f, 1380.0f, 0, 0),
@@ -199,6 +212,8 @@ static void App_VisionCameraSearchTick(void);
 static void App_VisionCameraSearchReset(void);
 static void App_QrScanSweepTick(void);
 static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
+static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position);
+static void App_RouteC_TofCalibrationTick(void);
 
 /**
  * @brief 初始化应用层状态
@@ -219,6 +234,12 @@ void App_Init(void)
     s_qr_gimbal_angle = 0.0f;
     s_qr_scan_step_start_tick = 0U;
     s_qr_scan_step_deadline = 0U;
+    s_route_c_start_node_idx = 11U;
+    s_c_tof_cal_started = false;
+    s_c_tof_stable_frames = 0U;
+    s_c_tof_last_seq = 0U;
+    s_c_tof_start_tick = 0U;
+    s_c_tof_last_frame_tick = 0U;
     App_VisionCameraSearchReset();
 }
 
@@ -234,6 +255,10 @@ void App_SetMode(AppMode_t mode)
         s_qr_gimbal_angle = 0.0f;
         s_qr_scan_step_start_tick = 0U;
         s_qr_scan_step_deadline = 0U;
+    }
+    if (mode == APP_MODE_CALIBRATE_C) {
+        s_c_tof_cal_started = false;
+        s_c_tof_stable_frames = 0U;
     }
     if (mode != APP_MODE_ROUTE_A && mode != APP_MODE_ROUTE_C) {
         App_VisionCameraSearchReset();
@@ -483,7 +508,7 @@ void App_RunCurrentMode(void)
 
                 PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 PCA9685_Set180Angle(7U, 0.0f);
-                App_SetMode(APP_MODE_ROUTE_C);
+                App_SetMode(APP_MODE_ROUTE_C_ENTRY);
             } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
                 if (s_qr_voice_index < 8U) {
                     if ((int32_t)(HAL_GetTick() - s_qr_voice_deadline) >= 0) {
@@ -496,10 +521,30 @@ void App_RunCurrentMode(void)
 
                 PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 PCA9685_Set180Angle(7U, 0.0f);
-                App_SetMode(APP_MODE_ROUTE_C);
+                App_SetMode(APP_MODE_ROUTE_C_ENTRY);
             } else {
                 App_QrScanSweepTick();
             }
+            break;
+
+        case APP_MODE_ROUTE_C_ENTRY:
+            /*
+             * 二维码播报结束后先选择 C 区入口：节点 0 为左下入口，节点 11 为右下入口。
+             * 入口航点来自 k_route_c，因此到点后导航会把车头调整到 0°，使车尾 TOF 正对底部挡板。
+             * 此航点不绑定抓取动作；到点后切换到独立的 TOF 校准模式。
+             */
+            s_route_c_start_node_idx = App_RouteC_SelectEntryNode(fruits[0]);
+            s_dynamic_route[0] = k_route_c[s_route_c_start_node_idx];
+            s_dynamic_route[0].has_action = false;
+            s_dynamic_route[0].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[0].positive_position = 0U;
+            s_dynamic_route[0].negative_position = 0U;
+            App_StartRoute(s_dynamic_route, 1U, APP_MODE_CALIBRATE_C);
+            break;
+
+        case APP_MODE_CALIBRATE_C:
+            /* 非阻塞推进 TOF 校准；成功后进入 ROUTE_C，失败则停车回到 IDLE。 */
+            App_RouteC_TofCalibrationTick();
             break;
 
         case APP_MODE_ROUTE_C:
@@ -785,10 +830,124 @@ static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_no
     return (cw_distance <= ccw_distance) ? cw_distance : ccw_distance;
 }
 
+/**
+ * @brief 根据二维码中的第一个作业位置选择 C 区左/右入口
+ * @details
+ * - 位置 1~4 只有左通道作业节点，通常选择节点 0；
+ * - 位置 9~12 只有右通道作业节点，通常选择节点 11；
+ * - 位置 5~8 可从两侧作业，分别计算两个入口到两侧候选节点的最短环路距离；
+ * - 两侧距离相同时选择右入口，减少扫码点附近的横向移动。
+ * @param first_position 二维码数组中的第一个水果位置，合法范围 1~12
+ * @return 0 表示左下入口，11 表示右下入口；非法位置安全回退到右入口
+ */
+static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position)
+{
+    uint8_t first_node;
+    float left_distance;
+    float right_distance;
+
+    if (first_position >= 1U && first_position <= 4U) {
+        first_node = (uint8_t)(5U - first_position);
+        left_distance = App_RouteC_GetShortestRingDistance(0U, first_node);
+        right_distance = App_RouteC_GetShortestRingDistance(11U, first_node);
+    } else if (first_position >= 5U && first_position <= 8U) {
+        /* 中间两列水果可由任一通道抓取，因此每个入口都要比较两个候选作业节点。 */
+        uint8_t left_lane_node = (uint8_t)(9U - first_position);
+        uint8_t right_lane_node = (uint8_t)(first_position + 2U);
+        float left_to_left = App_RouteC_GetShortestRingDistance(0U, left_lane_node);
+        float left_to_right = App_RouteC_GetShortestRingDistance(0U, right_lane_node);
+        float right_to_left = App_RouteC_GetShortestRingDistance(11U, left_lane_node);
+        float right_to_right = App_RouteC_GetShortestRingDistance(11U, right_lane_node);
+
+        left_distance = (left_to_left <= left_to_right) ? left_to_left : left_to_right;
+        right_distance = (right_to_left <= right_to_right) ? right_to_left : right_to_right;
+    } else if (first_position >= 9U && first_position <= 12U) {
+        first_node = (uint8_t)(first_position - 2U);
+        left_distance = App_RouteC_GetShortestRingDistance(0U, first_node);
+        right_distance = App_RouteC_GetShortestRingDistance(11U, first_node);
+    } else {
+        return 11U;
+    }
+
+    /* 距离相同时优先右入口，减少从 C 区扫码点横移的距离。 */
+    return (left_distance < right_distance) ? 0U : 11U;
+}
+
+/**
+ * @brief 在 C 区入口利用车尾 TOF 将底盘调整到距挡板 200mm，并把导航 Y 标定为 0
+ * @details 本函数由 15ms 应用任务周期调用，不包含阻塞等待：
+ * 1. 首次进入时停止导航并记录超时、新帧基准；
+ * 2. 只处理 TofFrameSeq 变化后的有效新数据，连续断帧时先停车；
+ * 3. 距离大于 210mm 时倒车靠近挡板，小于 190mm 时前进远离挡板；
+ * 4. 连续两帧落入 190~210mm 后停车，仅将 Y 设置为 0，再启动原 C 区作业路线；
+ * 5. 5s 内未完成则停车并中止路线，禁止使用未校准坐标继续运行。
+ */
+static void App_RouteC_TofCalibrationTick(void)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t frame_seq = TofFrameSeq;
+    float distance_mm;
+
+    if (!s_c_tof_cal_started) {
+        /* 丢弃进入状态前的旧测量值，必须等下一帧连续上报数据再开始移动。 */
+        Navigation_Stop();
+        s_c_tof_last_seq = frame_seq;
+        s_c_tof_start_tick = now;
+        s_c_tof_last_frame_tick = now;
+        s_c_tof_stable_frames = 0U;
+        s_c_tof_cal_started = true;
+        return;
+    }
+
+    if ((uint32_t)(now - s_c_tof_start_tick) >= APP_C_TOF_TIMEOUT_MS) {
+        /* 传感器异常或机械运动未到位时采取停车退出，不写入 Y=0。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_app_running = false;
+        App_SetMode(APP_MODE_IDLE);
+        return;
+    }
+
+    if (frame_seq == s_c_tof_last_seq) {
+        /* 没有新测量值时不得重复使用旧距离；运动中断帧超过阈值必须停车。 */
+        if ((uint32_t)(now - s_c_tof_last_frame_tick) >= APP_C_TOF_FRAME_STALE_MS) {
+            Chassis_SetSpeed(0.0f, 0.0f);
+        }
+        return;
+    }
+
+    distance_mm = TofData;
+    if (frame_seq != TofFrameSeq) {
+        /* 中断正在更新距离与帧序号，本周期不使用可能不一致的一组数据。 */
+        return;
+    }
+    s_c_tof_last_seq = frame_seq;
+    s_c_tof_last_frame_tick = now;
+
+    if (distance_mm >= (APP_C_TOF_TARGET_MM - APP_C_TOF_TOLERANCE_MM) &&
+        distance_mm <= (APP_C_TOF_TARGET_MM + APP_C_TOF_TOLERANCE_MM)) {
+        /* 达标帧先停车，再累计稳定次数，防止惯性和单帧噪声导致错误置零。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_c_tof_stable_frames++;
+        if (s_c_tof_stable_frames >= APP_C_TOF_STABLE_FRAMES) {
+            Navigation_SetY(0.0f);
+            App_SetMode(APP_MODE_ROUTE_C);
+        }
+        return;
+    }
+
+    s_c_tof_stable_frames = 0U;
+    if (distance_mm > APP_C_TOF_TARGET_MM) {
+        /* TOF 位于车尾：距离过大时倒车靠近挡板。 */
+        Chassis_SetSpeed(-APP_C_TOF_SPEED_MM_S, 0.0f);
+    } else {
+        /* 距离过小时前进远离挡板。 */
+        Chassis_SetSpeed(APP_C_TOF_SPEED_MM_S, 0.0f);
+    }
+}
+
 int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
                               AppMode_t next_mode)
 {
-    const uint8_t start_node_idx = 11U;
     uint8_t i;
     uint8_t curr;
     uint8_t next;
@@ -803,7 +962,8 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
         return -1;
     }
 
-    curr = start_node_idx;
+    /* 从刚完成 TOF 校准的实际入口开始规划，不能再固定假设从右入口节点 11 起步。 */
+    curr = s_route_c_start_node_idx;
 
     /* 严格按二维码数组顺序逐个生成目标，不能按环路位置重新排序。 */
     for (i = 0U; i < 8U; i++) {

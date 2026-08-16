@@ -160,6 +160,15 @@ void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg)
 }
 
 /**
+ * @brief 使用外部基准重新标定 Y 坐标
+ * @note  仅修改 Y；TOF 校准完成后仍保留当前 X、航向零偏和导航状态。
+ */
+void Navigation_SetY(float y_mm)
+{
+    g_robot_pos.y = y_mm;
+}
+
+/**
  * @brief 根据位移差更新机器人二维坐标
  * @note  由于机器人在大地坐标系下的航向偏角定义，采用 sin(yaw) 更新 x，cos(yaw) 更新 y
  */
