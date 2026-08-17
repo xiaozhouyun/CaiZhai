@@ -44,6 +44,8 @@
 #define APP_C_TOF_TIMEOUT_MS        10000U     /* 整个校准流程最长时间，超时停车并中止路线 */
 #define APP_C_TOF_FRAME_STALE_MS     300U     /* 持续移动时超过 300ms 无新帧，立即停车等待数据 */
 #define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
+#define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
+#define APP_B_TOF_X_TARGET_MM        1300.0f   /* 车头朝 -90° 时，车尾 TOF 到侧后方基准面的目标距离；达标后将 X 标定为 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -10 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
@@ -93,6 +95,28 @@ static uint8_t s_c_tof_stable_frames;    /* 连续落入 190~210mm 范围的有�
 static uint32_t s_c_tof_last_seq;        /* 校准状态机最近一次处理的 TofFrameSeq */
 static uint32_t s_c_tof_start_tick;      /* 本轮校准起始时刻，用于 5s 总超时保护 */
 static uint32_t s_c_tof_last_frame_tick; /* 最近一次有效新帧时刻，用于运动中的断帧停车保护 */
+
+typedef enum {
+    APP_B_CAL_ROTATE_Y_START,    /* 下发原地转向 0° 的导航请求 */
+    APP_B_CAL_WAIT_YAW_0,       /* 等待导航完成 0° 转向，确保车尾 TOF 正对 Y 轴基准面 */
+    APP_B_CAL_ADJUST_Y,         /* 闭环调整到 200mm，达标后把 Y 坐标置 0 */
+    APP_B_CAL_ROTATE_X_START,   /* 下发原地转向 -90° 的导航请求 */
+    APP_B_CAL_WAIT_YAW_NEG_90,  /* 等待导航完成 -90° 转向，确保车尾 TOF 正对 X 轴基准面 */
+    APP_B_CAL_ADJUST_X          /* 闭环调整到 1250mm，达标后把 X 坐标置 -950 */
+} AppBCalibrationState_t;
+
+typedef enum {
+    APP_TOF_CAL_IN_PROGRESS,    /* 未达标或正在等待新 TOF 帧，下一个 Tick 继续 */
+    APP_TOF_CAL_DONE,           /* 连续稳定帧均落入容差范围，允许写入坐标基准 */
+    APP_TOF_CAL_FAILED          /* 校准超时，必须停车退出，禁止使用未校准坐标继续路线 */
+} AppTofCalibrationResult_t;
+
+static AppBCalibrationState_t s_b_cal_state; /* B 区入口双轴校准当前阶段 */
+static bool s_b_tof_cal_started;             /* 当前轴是否已建立超时与新帧基准 */
+static uint8_t s_b_tof_stable_frames;        /* 当前轴连续落入目标容差的 TOF 帧数 */
+static uint32_t s_b_tof_last_seq;            /* 已处理的最新 TofFrameSeq，防止重复使用旧数据 */
+static uint32_t s_b_tof_start_tick;          /* 当前轴校准起始时刻，用于总超时保护 */
+static uint32_t s_b_tof_last_frame_tick;     /* 最近有效新帧时刻，运动中断帧时用于及时停车 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -214,6 +238,8 @@ static void App_QrScanSweepTick(void);
 static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
 static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position);
 static void App_RouteC_TofCalibrationTick(void);
+static void App_RouteB_TofCalibrationTick(void);
+static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm);
 
 /**
  * @brief 初始化应用层状态
@@ -240,6 +266,12 @@ void App_Init(void)
     s_c_tof_last_seq = 0U;
     s_c_tof_start_tick = 0U;
     s_c_tof_last_frame_tick = 0U;
+    s_b_cal_state = APP_B_CAL_ROTATE_Y_START;
+    s_b_tof_cal_started = false;
+    s_b_tof_stable_frames = 0U;
+    s_b_tof_last_seq = 0U;
+    s_b_tof_start_tick = 0U;
+    s_b_tof_last_frame_tick = 0U;
     App_VisionCameraSearchReset();
 }
 
@@ -259,6 +291,11 @@ void App_SetMode(AppMode_t mode)
     if (mode == APP_MODE_CALIBRATE_C) {
         s_c_tof_cal_started = false;
         s_c_tof_stable_frames = 0U;
+    }
+    if (mode == APP_MODE_CALIBRATE_B) {
+        s_b_cal_state = APP_B_CAL_ROTATE_Y_START;
+        s_b_tof_cal_started = false;
+        s_b_tof_stable_frames = 0U;
     }
     if (mode != APP_MODE_ROUTE_A && mode != APP_MODE_ROUTE_C) {
         App_VisionCameraSearchReset();
@@ -465,14 +502,23 @@ void App_RunCurrentMode(void)
             break;
 
         case APP_MODE_ROUTE_B:
-            /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
+            /*
+             * C 区结束后先沿 Y 轴回到底部，再横移到 B 区入口 (-950, 0)。
+             * 第 2 个航点保持 +90°，不在路线中提前转到 0°；到点后再由独立校准
+             * 状态机按“0° 校 Y、-90° 校 X”的顺序执行，避免测距期间与路线转向交叉。
+             */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-950.0f, 0.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-950.0f, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[2] = (AppWaypoint_t){-950.0f, 2300.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
+            App_StartRoute(s_dynamic_route, 2U, APP_MODE_CALIBRATE_B);
+            break;
+
+        case APP_MODE_CALIBRATE_B:
+            /* 每次任务 Tick 只推进一步；两轴都校准成功后才继续 B 区剩余路线。 */
+            App_RouteB_TofCalibrationTick();
             break;
 
         case APP_MODE_SCAN_B:
@@ -549,7 +595,7 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* 扫码完成或超时后，使用当前 fruits 数组启动 C 区规划。 */
-            App_RouteC_PlanAndRun(fruits, APP_MODE_BACK);
+            App_RouteC_PlanAndRun(fruits, APP_MODE_ROUTE_B);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
@@ -871,6 +917,143 @@ static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position)
 
     /* 距离相同时优先右入口，减少从 C 区扫码点横移的距离。 */
     return (left_distance < right_distance) ? 0U : 11U;
+}
+
+/**
+ * @brief 使用车尾 TOF，按单个目标距离非阻塞调整底盘前后位置
+ * @param target_mm 车尾 TOF 到当前基准面的目标距离，单位：mm
+ * @details 首次调用只记录帧序号和超时起点，丢弃转向前的旧测距值。之后每个 Tick
+ * 只处理一帧新数据：距离过大时倒车靠近基准面，距离过小时前进远离。
+ * 连续两帧进入目标±10mm 才返回完成；断帧超过 300ms 先停车，单轴超过 10s 返回失败。
+ * @return APP_TOF_CAL_IN_PROGRESS 调整中；APP_TOF_CAL_DONE 稳定达标；
+ *         APP_TOF_CAL_FAILED 超时失败
+ */
+static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t frame_seq = TofFrameSeq;
+    float distance_mm;
+
+    if (!s_b_tof_cal_started) {
+        /* 此时车身刚停止转向：仅建立新帧基准，不用旧距离立即驱动底盘。 */
+        Navigation_Stop();
+        s_b_tof_last_seq = frame_seq;
+        s_b_tof_start_tick = now;
+        s_b_tof_last_frame_tick = now;
+        s_b_tof_stable_frames = 0U;
+        s_b_tof_cal_started = true;
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    if ((uint32_t)(now - s_b_tof_start_tick) >= APP_C_TOF_TIMEOUT_MS) {
+        Chassis_SetSpeed(0.0f, 0.0f);
+        return APP_TOF_CAL_FAILED;
+    }
+
+    if (frame_seq == s_b_tof_last_seq) {
+        /* 无新帧时不重复判定旧距离；若底盘原先在移动，断帧后必须停车。 */
+        if ((uint32_t)(now - s_b_tof_last_frame_tick) >= APP_C_TOF_FRAME_STALE_MS) {
+            Chassis_SetSpeed(0.0f, 0.0f);
+        }
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    distance_mm = TofData;
+    if (frame_seq != TofFrameSeq) {
+        /* 中断可能正在分别更新距离和帧序号，不使用前后不一致的快照。 */
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+    s_b_tof_last_seq = frame_seq;
+    s_b_tof_last_frame_tick = now;
+
+    if (distance_mm >= (target_mm - APP_C_TOF_TOLERANCE_MM) &&
+        distance_mm <= (target_mm + APP_C_TOF_TOLERANCE_MM)) {
+        /* 进入容差带后先停车，再累计稳定帧，防止惯性和单帧噪声造成误标定。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_b_tof_stable_frames++;
+        if (s_b_tof_stable_frames >= APP_C_TOF_STABLE_FRAMES) {
+            return APP_TOF_CAL_DONE;
+        }
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    s_b_tof_stable_frames = 0U;
+    if (distance_mm > target_mm) {
+        /* TOF 位于车尾：距离过大时倒车靠近标定面。 */
+        Chassis_SetSpeed(-APP_C_TOF_SPEED_MM_S, 0.0f);
+    } else {
+        Chassis_SetSpeed(APP_C_TOF_SPEED_MM_S, 0.0f);
+    }
+    return APP_TOF_CAL_IN_PROGRESS;
+}
+
+/**
+ * @brief B 区入口双轴校准：0° 校准 Y，-90° 校准 X
+ * @details 入口航点到达时车头保持 +90°。本状态机先原地转到 0°，等待导航完全
+ * 结束后把车尾距离调到 200mm，仅将 Y 置 0；再原地转到 -90°，把车尾距离
+ * 调到 1250mm，仅将 X 置 -950。两次都成功后，才重新启动原路线的第 3 个航点。
+ * @note 航点朝向参数使用弧度；g_robot_pos.yaw 由导航层维护，单位为度。
+ */
+static void App_RouteB_TofCalibrationTick(void)
+{
+    AppTofCalibrationResult_t result;
+
+    switch (s_b_cal_state) {
+    case APP_B_CAL_ROTATE_Y_START:
+        /* 目标坐标取当前值，该请求只用于原地改变最终朝向。 */
+        if (Navigation_Request(g_robot_pos.x, g_robot_pos.y, 0.0f, 0.0f) == 0) {
+            s_b_cal_state = APP_B_CAL_WAIT_YAW_0;
+        }
+        break;
+
+    case APP_B_CAL_WAIT_YAW_0:
+        /* Navigation_IsIdle() 表示终点角度闭环已结束，此前不允许启动 TOF 直线调整。 */
+        if (Navigation_IsIdle()) {
+            s_b_tof_cal_started = false;
+            s_b_cal_state = APP_B_CAL_ADJUST_Y;
+        }
+        break;
+
+    case APP_B_CAL_ADJUST_Y:
+        result = App_RouteB_AdjustTof(APP_B_TOF_Y_TARGET_MM);
+        if (result == APP_TOF_CAL_DONE) {
+            /* 200mm 只对应 Y 轴外部基准，保留当前 X 和航向零偏。 */
+            Navigation_SetY(0.0f);
+            s_b_cal_state = APP_B_CAL_ROTATE_X_START;
+        } else if (result == APP_TOF_CAL_FAILED) {
+            s_app_running = false;
+            App_SetMode(APP_MODE_IDLE);
+        }
+        break;
+
+    case APP_B_CAL_ROTATE_X_START:
+        /* Y 已标定为 0；保持当前位置，原地转到 -90° 准备标定 X。 */
+        if (Navigation_Request(g_robot_pos.x, g_robot_pos.y, -PI / 2.0f, 0.0f) == 0) {
+            s_b_cal_state = APP_B_CAL_WAIT_YAW_NEG_90;
+        }
+        break;
+
+    case APP_B_CAL_WAIT_YAW_NEG_90:
+        /* 转向完成后重新建立 TOF 帧基准，避免沿用 0° 时的测距数据。 */
+        if (Navigation_IsIdle()) {
+            s_b_tof_cal_started = false;
+            s_b_cal_state = APP_B_CAL_ADJUST_X;
+        }
+        break;
+
+    default:
+        /* 默认分支即 APP_B_CAL_ADJUST_X：根据 1250mm 目标调整，只在稳定达标后写入 X。 */
+        result = App_RouteB_AdjustTof(APP_B_TOF_X_TARGET_MM);
+        if (result == APP_TOF_CAL_DONE) {
+            Navigation_SetX(-950.0f);
+            /* 恢复原动态路线的第 3 点 (-950, 2300, 180°)，到点后转入 B 区作业路线。 */
+            App_StartRoute(&s_dynamic_route[2], 1U, APP_MODE_SCAN_B);
+        } else if (result == APP_TOF_CAL_FAILED) {
+            s_app_running = false;
+            App_SetMode(APP_MODE_IDLE);
+        }
+        break;
+    }
 }
 
 /**

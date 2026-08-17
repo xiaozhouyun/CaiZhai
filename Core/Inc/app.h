@@ -17,7 +17,8 @@ typedef enum {
     APP_MODE_ROUTE_C_ENTRY, /**< C 区入口模式：根据首个作业位置选择左/右入口 */
     APP_MODE_CALIBRATE_C,   /**< C 区 TOF 校准模式：车尾距挡板 200mm 后将 Y 置零 */
     APP_MODE_ROUTE_C,   /**< 航线 C 模式：执行第二阶段的路径导航（例如折返或区域内作业） */
-    APP_MODE_BACK       /**< 返回模式：执行返回动作，例如回到起始点 */
+    APP_MODE_BACK,      /**< 返回模式：执行返回动作，例如回到起始点 */
+    APP_MODE_CALIBRATE_B /**< B 区入口双轴 TOF 校准：先校准 Y，再校准 X */
 } AppMode_t;
 
 #define APP_ACTION_NONE      0x00U

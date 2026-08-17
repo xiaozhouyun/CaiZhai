@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 void PCA9685_Set270Angle(float angle);
+float PCA9685_Get270Angle(void);
+int32_t PCA9685_Set180Angle(uint8_t channel, float angle);
 float PCA9685_Get180Angle(uint8_t channel);
 
 #endif

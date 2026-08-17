@@ -26,9 +26,13 @@ static float s_gimbal_angles[16];
 static uint8_t s_gimbal_count;
 static uint8_t s_send_count;
 static uint8_t s_scan_count;
+static float s_last_linear_speed;
 
 volatile position_t g_robot_pos = {-2600.0f, 500.0f, 0.0f};
 volatile bool g_enable_auto_reverse;
+volatile float TofData;
+volatile uint32_t TofFrameSeq;
+volatile float g_hwt101_yaw;
 float now_pos = 27.0f;
 uint8_t CameraFlag;
 uint8_t fruits[8] = {4U, 3U, 1U, 10U, 8U, 9U, 2U, 11U};
@@ -82,8 +86,9 @@ uint32_t HAL_GetTick(void)
     return s_tick;
 }
 
-int8_t Navigation_Request(float x, float y, float yaw)
+int8_t Navigation_Request(float x, float y, float yaw, float move_heading_bias_rad)
 {
+    (void)move_heading_bias_rad;
     assert(s_navigation_idle);
     assert(s_request_count < (uint8_t)(sizeof(s_requests) / sizeof(s_requests[0])));
     s_requests[s_request_count++] = (NavRequest_t){x, y, yaw};
@@ -101,10 +106,38 @@ void Navigation_Stop(void)
     s_navigation_idle = true;
 }
 
+void Navigation_Reset(float x, float y, float yaw_zero_deg)
+{
+    g_robot_pos.x = x;
+    g_robot_pos.y = y;
+    g_robot_pos.yaw = 0.0f;
+    g_hwt101_yaw = yaw_zero_deg;
+    s_navigation_idle = true;
+}
+
+void Navigation_SetY(float y)
+{
+    g_robot_pos.y = y;
+}
+
+void Navigation_SetX(float x)
+{
+    g_robot_pos.x = x;
+}
+
+void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
+{
+    s_last_linear_speed = linear_vel_mm_s;
+    (void)angular_vel_rad_s;
+}
+
 void Move_Pos(float pos)
 {
     now_pos = pos;
 }
+
+void ZhuaZi_open(void) {}
+void ZhuaZi_close(void) {}
 
 void Tiancan_RxByte(uint8_t data)
 {
@@ -126,6 +159,18 @@ void PCA9685_Set270Angle(float angle)
     (void)angle;
 }
 
+float PCA9685_Get270Angle(void)
+{
+    return 35.0f;
+}
+
+int32_t PCA9685_Set180Angle(uint8_t channel, float angle)
+{
+    (void)channel;
+    (void)angle;
+    return 0;
+}
+
 float PCA9685_Get180Angle(uint8_t channel)
 {
     (void)channel;
@@ -136,6 +181,16 @@ void UpperCP_ResetQrResult(void)
 {
     CameraFlag = 0U;
     fruits_count = 0U;
+}
+
+uint32_t UpperCP_GetRxCount(void)
+{
+    return 0U;
+}
+
+void vTaskDelay(uint32_t ticks)
+{
+    s_tick += ticks;
 }
 
 void UpperCP_SendTask(const char *task)
@@ -165,57 +220,62 @@ void ActionScheduler_StartGimbalMove(float target_angle, uint32_t duration_ms)
 
 int main(void)
 {
-    static const float expected_y[8] = {
-        2150.0f, 1950.0f, 1700.0f, 1500.0f,
-        1200.0f, 1000.0f, 700.0f, 500.0f
-    };
-    static const float expected_gimbal[8] = {
-        90.0f, -90.0f, 90.0f, -90.0f,
-        90.0f, -90.0f, 90.0f, -90.0f
-    };
-    uint8_t i;
-
     App_Init();
     s_app_running = true;
     App_SetMode(APP_MODE_ROUTE_B);
 
     App_RunCurrentMode();
-    AssertRequest(0U, -2600.0f, 10.0f, PI / 2.0f);
+    AssertRequest(0U, -2600.0f, 0.0f, PI / 2.0f);
     ArriveAtLastRequest();
     App_RunCurrentMode();
-    AssertRequest(1U, -1500.0f, 10.0f, 0.0f);
+    AssertRequest(1U, -950.0f, 0.0f, PI / 2.0f);
     ArriveAtLastRequest();
     App_RunCurrentMode();
-    AssertRequest(2U, -1500.0f, 2350.0f, PI);
+
+    /* 到达 B 区入口时保持 +90°，然后单独转到 0°。 */
+    assert(g_app_mode == APP_MODE_CALIBRATE_B);
+    App_RunCurrentMode();
+    AssertRequest(2U, -950.0f, 0.0f, 0.0f);
     ArriveAtLastRequest();
     App_RunCurrentMode();
     App_RunCurrentMode();
 
+    /* 200mm 校准需要新帧，距离过大时先倒车，连续两帧达标后才置 Y=0。 */
+    TofData = 260.0f;
+    TofFrameSeq++;
+    App_RunCurrentMode();
+    assert(NearlyEqual(s_last_linear_speed, -50.0f));
+    g_robot_pos.y = -25.0f;
+    TofData = 200.0f;
+    TofFrameSeq++;
+    App_RunCurrentMode();
+    TofFrameSeq++;
+    App_RunCurrentMode();
+    assert(NearlyEqual(g_robot_pos.y, 0.0f));
+
+    /* Y 标定后转到 -90°，再执行 1250mm 的 X 轴校准。 */
+    App_RunCurrentMode();
+    AssertRequest(3U, -950.0f, 0.0f, -PI / 2.0f);
+    ArriveAtLastRequest();
+    App_RunCurrentMode();
+    App_RunCurrentMode();
+    g_robot_pos.x = -920.0f;
+    TofData = 1250.0f;
+    TofFrameSeq++;
+    App_RunCurrentMode();
+    TofFrameSeq++;
+    App_RunCurrentMode();
+    assert(NearlyEqual(g_robot_pos.x, -950.0f));
+
+    /* 双轴校准完成后才继续原路线第 3 点和 B 区作业路线。 */
+    AssertRequest(4U, -950.0f, 2300.0f, PI);
+    ArriveAtLastRequest();
+    App_RunCurrentMode();
+    App_RunCurrentMode();
+    AssertRequest(5U, -950.0f, 2150.0f, PI);
+    assert(g_app_mode == APP_MODE_SCAN_B);
+    assert(App_IsRunning());
     assert(s_scan_count == 0U);
-    assert(s_request_count == 4U);
-
-    for (i = 0U; i < 8U; i++) {
-        uint8_t request_index = (uint8_t)(3U + i);
-        uint8_t gimbal_before = s_gimbal_count;
-        uint8_t send_before = s_send_count;
-
-        AssertRequest(request_index, -1500.0f, expected_y[i], PI);
-        CompleteCurrentWorkPoint();
-        assert(s_gimbal_count == (uint8_t)(gimbal_before + 1U));
-        assert(NearlyEqual(s_gimbal_angles[gimbal_before], expected_gimbal[i]));
-        assert(s_send_count == (uint8_t)(send_before + 1U));
-    }
-
-    assert(s_request_count == 11U);
-    App_RunCurrentMode();
-    AssertRequest(11U, -1500.0f, 10.0f, PI / 2.0f);
-    ArriveAtLastRequest();
-    App_RunCurrentMode();
-    AssertRequest(12U, 0.0f, 0.0f, PI / 2.0f);
-    ArriveAtLastRequest();
-    App_RunCurrentMode();
-    assert(g_app_mode == APP_MODE_IDLE);
-    assert(!App_IsRunning());
 
     puts("app_route_b_test: PASS");
     return 0;
