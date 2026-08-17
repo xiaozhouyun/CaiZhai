@@ -82,7 +82,7 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_CROSS_CAPTURE     0.10f         /**< 终点调角过零捕获阈值 (rad)，小角度跨过目标即认为到位 */
 #define ARRIVED_FAST_ANGULAR      0.9f          /**< 终点调角大误差固定角速度 (rad/s) */
 #define ARRIVED_MID_ANGULAR       0.6f         /**< 终点调角中误差固定角速度 (rad/s) */
-#define ARRIVED_SLOW_ANGULAR      0.3f         /**< 终点调角近目标固定角速度 (rad/s) */
+#define ARRIVED_SLOW_ANGULAR      0.2f         /**< 终点调角近目标固定角速度 (rad/s) */
 #define ARRIVED_ERR_THRESH        0.015f        /**< 最终角度对齐允许最大误差 (rad)，约 0.86 度 */
 
 /* 状态机全局变量 */

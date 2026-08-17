@@ -168,14 +168,14 @@ static const AppWaypoint_t k_route_a[] = {
 
 /* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_SIDE(-1050.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1050.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1050.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1050.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1050.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1050.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-1050.0f,  700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-1050.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f,  700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -187,7 +187,7 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1965.0f, 1880.0f, 0, 0),
     WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
     WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
-    WAYPOINT(-2615.0f, 1880.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1870.0f, 0, 0),
     WAYPOINT(-2615.0f, 1380.0f, 0, 0),
     WAYPOINT(-2615.0f, 880.0f, 0, 0),
     WAYPOINT(-2615.0f, 380.0f, 0, 0),
@@ -468,9 +468,9 @@ void App_RunCurrentMode(void)
             /* C 区结束后先下到底部，再沿 B 区中线上行到扫码点，禁止斜穿顶部区域。 */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[1] = (AppWaypoint_t){-1050.0f, 0.0f, 0.0f,
+            s_dynamic_route[1] = (AppWaypoint_t){-950.0f, 0.0f, 0.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-1050.0f, 2300.0f, PI,
+            s_dynamic_route[2] = (AppWaypoint_t){-950.0f, 2300.0f, PI,
                                                   false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 3U, APP_MODE_SCAN_B);
             break;
