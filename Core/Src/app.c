@@ -40,10 +40,11 @@
 #define APP_QR_SCAN_STEP_MS         1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
 #define APP_C_TOF_TARGET_MM          200.0f   /* 车尾 TOF 到 C 区底部挡板的目标距离，单位：mm */
 #define APP_C_TOF_TOLERANCE_MM        10.0f   /* 校准允许误差：190~210mm 均视为进入目标范围 */
-#define APP_C_TOF_SPEED_MM_S          50.0f   /* 校准时前后移动的低速线速度，单位：mm/s */
+#define APP_C_TOF_SPEED_MM_S          30.0f   /* C 区校准时前后移动的低速线速度，单位：mm/s */
 #define APP_C_TOF_TIMEOUT_MS        10000U     /* 整个校准流程最长时间，超时停车并中止路线 */
 #define APP_C_TOF_FRAME_STALE_MS     300U     /* 持续移动时超过 300ms 无新帧，立即停车等待数据 */
 #define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
+#define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
 #define APP_B_TOF_X_TARGET_MM        1300.0f   /* 车头朝 -90° 时，车尾 TOF 到侧后方基准面的目标距离；达标后将 X 标定为 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
@@ -205,15 +206,15 @@ static const AppWaypoint_t k_route_b[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
-    WAYPOINT(-1965.0f, 380.0f, 0, 0),
-    WAYPOINT(-1965.0f, 880.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1380.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1880.0f, 0, 0),
+    WAYPOINT(-1965.0f, 370.0f, 0, 0),
+    WAYPOINT(-1965.0f, 870.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1370.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1870.0f, 0, 0),
     WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
     WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
-    WAYPOINT(-2615.0f, 1870.0f, 0, 0),
-    WAYPOINT(-2615.0f, 1380.0f, 0, 0),
-    WAYPOINT(-2615.0f, 880.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1860.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1360.0f, 0, 0),
+    WAYPOINT(-2615.0f, 870.0f, 0, 0),
     WAYPOINT(-2615.0f, 380.0f, 0, 0),
     WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
@@ -595,7 +596,7 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_C:
             /* 扫码完成或超时后，使用当前 fruits 数组启动 C 区规划。 */
-            App_RouteC_PlanAndRun(fruits, APP_MODE_ROUTE_B);
+            App_RouteC_PlanAndRun(fruits, APP_MODE_BACK);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
@@ -980,9 +981,9 @@ static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm)
     s_b_tof_stable_frames = 0U;
     if (distance_mm > target_mm) {
         /* TOF 位于车尾：距离过大时倒车靠近标定面。 */
-        Chassis_SetSpeed(-APP_C_TOF_SPEED_MM_S, 0.0f);
+        Chassis_SetSpeed(-APP_B_TOF_SPEED_MM_S, 0.0f);
     } else {
-        Chassis_SetSpeed(APP_C_TOF_SPEED_MM_S, 0.0f);
+        Chassis_SetSpeed(APP_B_TOF_SPEED_MM_S, 0.0f);
     }
     return APP_TOF_CAL_IN_PROGRESS;
 }
