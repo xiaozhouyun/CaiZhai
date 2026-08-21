@@ -25,19 +25,21 @@
 #define APP_ROUTE_LIFT_SETTLE_MS      2200U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
-#define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_QR_SCAN_TIMEOUT_MS       30000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* A/C 区 send 后无上位机消息时，延时后启动摄像头搜索 */
 #define APP_VISION_CAMERA_SWEEP_DEG   10.0f  /* A/C 区等待视觉响应时，摄像头相对基准上摆角度 */
 #define APP_VISION_CAMERA_SWEEP_STEP_DEG 1.0f /* 摄像头搜索每次相对基准角的步进角度 */
 #define APP_VISION_CAMERA_SWEEP_STEP_MS  500U /* 摄像头搜索每个角度停留时间 */
-#define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机每次停留开始俯仰角 */
-#define APP_QR_CAMERA_SCAN_END_DEG    50.0f  /* 二维码相机每次停留结束俯仰角 */
+#define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机第一档俯仰角 */
+#define APP_QR_CAMERA_SCAN_MIDDLE_DEG 50.0f  /* 二维码相机第二档俯仰角 */
+#define APP_QR_CAMERA_SCAN_END_DEG    40.0f  /* 二维码相机第三档俯仰角 */
 #define APP_QR_GIMBAL_LEFT_DEG       -10.0f  /* 二维码搜索左侧最大角度 */
 #define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
-#define APP_QR_SCAN_STEP_MS         1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
+#define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
+#define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
 #define APP_C_TOF_TARGET_MM          200.0f   /* 车尾 TOF 到 C 区底部挡板的目标距离，单位：mm */
 #define APP_C_TOF_TOLERANCE_MM        10.0f   /* 校准允许误差：190~210mm 均视为进入目标范围 */
 #define APP_C_TOF_SPEED_MM_S          30.0f   /* C 区校准时前后移动的低速线速度，单位：mm/s */
@@ -368,13 +370,14 @@ static void App_QrScanSweepTick(void)
 
     if ((int32_t)(now - s_qr_scan_step_deadline) < 0) {
         uint32_t elapsed = now - s_qr_scan_step_start_tick;
-        if (elapsed > APP_QR_SCAN_STEP_MS) {
-            elapsed = APP_QR_SCAN_STEP_MS;
-        }
 
-        (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG +
-                                  (APP_QR_CAMERA_SCAN_END_DEG - APP_QR_CAMERA_SCAN_START_DEG) *
-                                  ((float)elapsed / (float)APP_QR_SCAN_STEP_MS));
+        if (elapsed < APP_QR_SCAN_ANGLE_DWELL_MS) {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+        } else if (elapsed < (APP_QR_SCAN_ANGLE_DWELL_MS * 2U)) {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_MIDDLE_DEG);
+        } else {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_END_DEG);
+        }
         return;
     }
 
@@ -451,7 +454,8 @@ void vofaRxbyte(uint8_t data)
         /* 保留原测试入口：下一次 Task07 Tick 将云台置为测试角度后回到空闲。 */
         s_app_running = 1;
         s_stop_requested = 0;
-        App_SetMode(APP_MODE_TEST);
+        // App_SetMode(APP_MODE_TEST);
+         App_SetMode(APP_MODE_SCAN_C);
     }
 }
 /**
@@ -573,6 +577,7 @@ void App_RunCurrentMode(void)
                 PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 PCA9685_Set180Angle(7U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C_ENTRY);
+                // App_SetMode(APP_MODE_IDLE);
             } else {
                 App_QrScanSweepTick();
             }
