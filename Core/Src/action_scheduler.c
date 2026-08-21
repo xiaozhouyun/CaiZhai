@@ -31,7 +31,7 @@
 #define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
 #define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)
 #define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)
-#define ARM_EXTEND_TOF_OFFSET_CM      (7.0f)
+#define ARM_EXTEND_TOF_OFFSET_CM      (8.0f)
 
 /*
  * 机械动作反应时间（单位：ms）。

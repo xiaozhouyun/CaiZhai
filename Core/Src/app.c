@@ -22,7 +22,7 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      2000U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      2200U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
@@ -207,8 +207,8 @@ static const AppWaypoint_t k_route_b[] = {
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
     WAYPOINT(-1965.0f, 370.0f, 0, 0),
-    WAYPOINT(-1965.0f, 870.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1370.0f, 0, 0),
+    WAYPOINT(-1965.0f, 860.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1360.0f, 0, 0),
     WAYPOINT(-1965.0f, 1870.0f, 0, 0),
     WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
     WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
@@ -481,12 +481,15 @@ void App_RunCurrentMode(void)
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
         // Chassis_SetSpeed(0.0f,0.6f);
         //  vTaskDelay(pdMS_TO_TICKS(2000U));
-    //    Chassis_SetSpeed(0.0f,0.0f);
+       Chassis_SetSpeed(0.0f,0.9f);
         //  ActionScheduler_StartGimbalMove(90.0f, 1000U);
-      
-        ZhuaZi_open();
-        vTaskDelay(pdMS_TO_TICKS(2000U));
-          ZhuaZi_close();
+        // Move_down(5.0f);
+        // ZhuaZi_open();
+        // Move_Pos(27.0f);
+        vTaskDelay(pdMS_TO_TICKS(5000U));
+               Chassis_SetSpeed(0.0f,0.0f);
+        //   Move_Pos(2.0f);
+        //   ZhuaZi_close();
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -506,7 +509,8 @@ void App_RunCurrentMode(void)
             /*
              * C 区结束后先沿 Y 轴回到底部，再横移到 B 区入口 (-950, 0)。
              * 第 2 个航点保持 +90°，不在路线中提前转到 0°；到点后再由独立校准
-             * 状态机按“0° 校 Y、-90° 校 X”的顺序执行，避免测距期间与路线转向交叉。
+             * 状
+             * 态机按“0° 校 Y、-90° 校 X”的顺序执行，避免测距期间与路线转向交叉。
              */
             s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
