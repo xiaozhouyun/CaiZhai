@@ -25,7 +25,7 @@
 #define APP_ROUTE_LIFT_SETTLE_MS      2200U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
-#define APP_QR_SCAN_TIMEOUT_MS       30000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* A/C 区 send 后无上位机消息时，延时后启动摄像头搜索 */

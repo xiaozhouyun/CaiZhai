@@ -49,6 +49,9 @@
 #define ARM_SKIP_LIFT_SETTLE_MS       1500U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
+#define ARM_GIMBAL_LIMIT_DEG          90.0f  /* 视觉水平对准时的云台机械限位 */
+#define ARM_GIMBAL_REVERSE_DEG        85.0f  /* 从侧向视野回转 10 度后改用底盘后退 */
+#define ARM_CHASSIS_ALIGN_STEP_MM     10.0f  /* 云台停止转动后，底盘单次对准距离 */
 
 /*
  * 抓取动作状态机总体节奏：
@@ -59,7 +62,7 @@
  *
  * arm 命令约定：
  * - arm:0 正常果抓取：测距 -> 开爪 -> 伸臂 -> 闭爪 -> 收臂/抬升/回中/放果；
- * - arm:1/2 视觉水平微调：云台每次小角度左/右转，超过极限后底盘前移重新找目标；
+ * - arm:1/2 视觉水平微调：云台每次小角度左/右转；向外到 90 度后前移，向内回转到 80 度后后退；
  * - arm:3/4 视觉垂直微调：升降台上/下移动 1cm；
  * - arm:5 跳过目标：不抓取，执行收臂、抬升、云台切视野/回中，然后通知路线继续；
  * - arm:6 坏果处理：按坏果流程夹取/释放，再复用通用放置复位流程。
@@ -113,7 +116,7 @@ typedef enum {
 
 static ActionState_t s_state;       /* 当前动作阶段；由 ActionScheduler_Tick() 根据 s_deadline 推进 */
 static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基；统一用有符号差值判断是否到期 */
-static uint8_t s_retry_count;       /* 云台到左右极限后的前移次数；过多仍未对准则放弃当前目标 */
+static uint8_t s_retry_count;       /* 云台停止转动后的底盘对准次数；过多仍未对准则放弃当前目标 */
 static bool s_gimbal_moving;        /* 通道7是否正在执行非阻塞匀速轨迹；由 GimbalTick 分帧插补 */
 static bool s_gimbal_lift_pending;  /* 云台转动前，是否仍在等待升降台到 10cm，防止大角度转动撞机构 */
 static float s_gimbal_start_angle;  /* 本次云台插补轨迹起始角度，来自 PCA9685_Get180Angle(7U) */
@@ -376,6 +379,8 @@ void ActionScheduler_StartGimbalMove(float target_angle_deg, uint32_t duration_m
 void ActionScheduler_RequestVisionArm(uint8_t command)
 {
     float gimbal_angle;
+    bool use_chassis_align;
+    uint8_t chassis_dir;
 
     /*
      * 这是视觉命令进入动作调度器的唯一入口。
@@ -404,14 +409,25 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
          * arm:1/2 仅做视觉水平对准：
          * - arm:1 向负方向微调云台；
          * - arm:2 向正方向微调云台；
-         * - 已到 +/-90° 极限还没对准时，让底盘前移一小段重新获得视野。
+         * - 向外到 +/-90° 极限还没对准时，让底盘前移重新获得视野；
+         * - 从 +90° 回到 +80°，或从 -90° 回到 -80° 后，不再转云台，改用底盘后退。
          */
-        if ((command == 1U && gimbal_angle <= -90.0f) ||
-            (command == 2U && gimbal_angle >= 90.0f)) {
+        use_chassis_align = false;
+        chassis_dir = 1U;
+        if ((command == 1U && gimbal_angle > 0.0f && gimbal_angle <= ARM_GIMBAL_REVERSE_DEG) ||
+            (command == 2U && gimbal_angle < 0.0f && gimbal_angle >= -ARM_GIMBAL_REVERSE_DEG)) {
+            use_chassis_align = true;
+            chassis_dir = 0U;
+        } else if ((command == 1U && gimbal_angle <= -ARM_GIMBAL_LIMIT_DEG) ||
+                   (command == 2U && gimbal_angle >= ARM_GIMBAL_LIMIT_DEG)) {
+            use_chassis_align = true;
+        }
+
+        if (use_chassis_align) {
             s_retry_count++;
-            ActionScheduler_Debug("GIMBAL_LIMIT", command);
+            ActionScheduler_Debug((chassis_dir == 0U) ? "GIMBAL_REVERSE_LIMIT" : "GIMBAL_LIMIT", command);
             if (s_retry_count >= 1000U) {
-                /* 连续五次撞到云台极限仍未对准，按 arm:5 流程放弃当前果实。 */
+                /* 底盘多次调整后仍未对准，按 arm:5 流程放弃当前果实。 */
                 if (upordownFlag == 0U) {
                     ActionScheduler_StartSkip();
                     ActionScheduler_Debug("GIVEUP_SKIP", command);
@@ -420,9 +436,9 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
                     App_NotifyGrabDone();
                 }
             } else {
-                /* 云台已到机械极限时，底盘前移 100mm 后等待相机重新反馈。 */
-                Emm_V5_Chassis_Pos_Control(1, 50, 20, 10.0f);
-                ActionScheduler_Debug("CHASSIS_FORWARD", command);
+                /* 云台保持当前角度，底盘移动 100mm 后等待相机重新反馈。 */
+                Emm_V5_Chassis_Pos_Control(chassis_dir, 50, 20, ARM_CHASSIS_ALIGN_STEP_MM);
+                ActionScheduler_Debug((chassis_dir == 0U) ? "CHASSIS_REVERSE" : "CHASSIS_FORWARD", command);
             }
         } else {
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
