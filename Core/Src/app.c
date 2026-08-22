@@ -33,10 +33,10 @@
 #define APP_VISION_CAMERA_SWEEP_STEP_DEG 1.0f /* 摄像头搜索每次相对基准角的步进角度 */
 #define APP_VISION_CAMERA_SWEEP_STEP_MS  500U /* 摄像头搜索每个角度停留时间 */
 #define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机第一档俯仰角 */
-#define APP_QR_CAMERA_SCAN_MIDDLE_DEG 50.0f  /* 二维码相机第二档俯仰角 */
-#define APP_QR_CAMERA_SCAN_END_DEG    40.0f  /* 二维码相机第三档俯仰角 */
-#define APP_QR_GIMBAL_LEFT_DEG       -10.0f  /* 二维码搜索左侧最大角度 */
-#define APP_QR_GIMBAL_RIGHT_DEG       10.0f  /* 二维码搜索右侧最大角度 */
+#define APP_QR_CAMERA_SCAN_MIDDLE_DEG 70.0f  /* 二维码相机第二档俯仰角 */
+#define APP_QR_CAMERA_SCAN_END_DEG    80.0f  /* 二维码相机第三档俯仰角 */
+#define APP_QR_GIMBAL_LEFT_DEG       -20.0f  /* 二维码搜索左侧最大角度 */
+#define APP_QR_GIMBAL_RIGHT_DEG       20.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
 #define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
@@ -50,9 +50,9 @@
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
 #define APP_B_TOF_X_TARGET_MM        1300.0f   /* 车头朝 -90° 时，车尾 TOF 到侧后方基准面的目标距离；达标后将 X 标定为 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
-#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -10 度 */
+#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
-#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +10 度 */
+#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +20 度 */
 #define APP_QR_SCAN_CENTER_FROM_RIGHT 3U     /* 扫码云台阶段：从右侧回中 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
@@ -214,10 +214,10 @@ static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1965.0f, 1870.0f, 0, 0),
     WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
     WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
-    WAYPOINT(-2615.0f, 1860.0f, 0, 0),
-    WAYPOINT(-2615.0f, 1360.0f, 0, 0),
-    WAYPOINT(-2615.0f, 870.0f, 0, 0),
-    WAYPOINT(-2615.0f, 380.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1850.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1350.0f, 0, 0),
+    WAYPOINT(-2615.0f, 860.0f, 0, 0),
+    WAYPOINT(-2615.0f, 370.0f, 0, 0),
     WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
 
