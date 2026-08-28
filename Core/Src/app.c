@@ -28,10 +28,8 @@
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
 #define APP_QR_VOICE_INTERVAL_MS      1500U  /* 相邻二维码位置语音的播放间隔 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
-#define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* A/C 区 send 后无上位机消息时，延时后启动摄像头搜索 */
-#define APP_VISION_CAMERA_SWEEP_DEG   10.0f  /* A/C 区等待视觉响应时，摄像头相对基准上摆角度 */
-#define APP_VISION_CAMERA_SWEEP_STEP_DEG 1.0f /* 摄像头搜索每次相对基准角的步进角度 */
-#define APP_VISION_CAMERA_SWEEP_STEP_MS  500U /* 摄像头搜索每个角度停留时间 */
+#define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* send 后无上位机消息时，延时后启动摄像头搜索 */
+#define APP_VISION_CAMERA_SEARCH_DWELL_MS 2000U /* 摄像头搜索每个固定角度停留时间 */
 #define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机第一档俯仰角 */
 #define APP_QR_CAMERA_SCAN_MIDDLE_DEG 70.0f  /* 二维码相机第二档俯仰角 */
 #define APP_QR_CAMERA_SCAN_END_DEG    80.0f  /* 二维码相机第三档俯仰角 */
@@ -88,10 +86,9 @@ static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转�
 static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
 static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
 static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
-static bool s_vision_camera_search_active; /* A/C 区 send 后无上位机消息时，是否启用摄像头上下搜索 */
-static uint32_t s_vision_send_tick;     /* 最近一次 A/C 区 send 下发时刻 */
+static bool s_vision_camera_search_active; /* send 后无上位机消息时，是否启用摄像头上下搜索 */
+static uint32_t s_vision_send_tick;     /* 最近一次 send 下发时刻 */
 static uint32_t s_vision_send_rx_count; /* send 下发时记录的上位机 UART5 接收字节计数 */
-static float s_vision_camera_base_angle; /* send 下发时摄像头俯仰基准角 */
 static uint8_t s_route_c_start_node_idx; /* 本次 C 区路线入口节点：0=左下入口，11=右下入口 */
 static bool s_c_tof_cal_started;         /* 是否已建立本轮 TOF 校准的时间和帧序号基准 */
 static uint8_t s_c_tof_stable_frames;    /* 连续落入 190~210mm 范围的有效帧计数 */
@@ -311,7 +308,6 @@ static void App_VisionCameraSearchReset(void)
     s_vision_camera_search_active = false;
     s_vision_send_tick = 0U;
     s_vision_send_rx_count = 0U;
-    s_vision_camera_base_angle = 0.0f;
 }
 
 static void App_SendVisionTask(void)
@@ -323,7 +319,6 @@ static void App_SendVisionTask(void)
         s_vision_camera_search_active = true;
         s_vision_send_tick = HAL_GetTick();
         s_vision_send_rx_count = UpperCP_GetRxCount();
-        s_vision_camera_base_angle = PCA9685_Get270Angle();
     } else {
         App_VisionCameraSearchReset();
     }
@@ -331,12 +326,10 @@ static void App_SendVisionTask(void)
 
 static void App_VisionCameraSearchTick(void)
 {
+    static const float search_angles[] = {20.0f, 30.0f, 50.0f, 60.0f};
     uint32_t now;
     uint32_t elapsed;
     uint32_t phase;
-    uint32_t max_step = (uint32_t)(APP_VISION_CAMERA_SWEEP_DEG / APP_VISION_CAMERA_SWEEP_STEP_DEG);
-    uint32_t cycle_steps = max_step * 2U;
-    float offset_deg;
 
     if (!s_vision_camera_search_active) {
         return;
@@ -353,15 +346,9 @@ static void App_VisionCameraSearchTick(void)
     }
 
     elapsed = now - s_vision_send_tick - APP_VISION_NO_RX_SEARCH_DELAY_MS;
-    phase = (cycle_steps == 0U) ? 0U : ((elapsed / APP_VISION_CAMERA_SWEEP_STEP_MS) % cycle_steps);
-
-    if (phase <= max_step) {
-        offset_deg = APP_VISION_CAMERA_SWEEP_STEP_DEG * (float)phase;
-    } else {
-        offset_deg = APP_VISION_CAMERA_SWEEP_STEP_DEG * (float)(cycle_steps - phase);
-    }
-
-    (void)PCA9685_Set270Angle(s_vision_camera_base_angle + offset_deg);
+    phase = (elapsed / APP_VISION_CAMERA_SEARCH_DWELL_MS) %
+            (sizeof(search_angles) / sizeof(search_angles[0]));
+    (void)PCA9685_Set270Angle(search_angles[phase]);
 }
 
 static void App_QrScanSweepTick(void)

@@ -24,7 +24,7 @@ typedef enum {
 #define APP_ACTION_NONE      0x00U
 #define APP_ACTION_POSITIVE  0x01U
 #define APP_ACTION_NEGATIVE  0x02U
-#define APP_CAMERA_CENTER_DEG 35.0f
+#define APP_CAMERA_CENTER_DEG 40.0f
 
 /**
  * @brief 路径点（航点）结构体

@@ -235,9 +235,6 @@ void StartDefaultTask(void *argument)
       Emm_V5_Synchronous_motion(0);
       Navigation_Stop();
       vTaskDelay(pdMS_TO_TICKS(2000U));
-//        s_app_running = true;
-//        s_stop_requested = false;
-//        App_SetMode(APP_MODE_ROUTE_A);
    
   /* 初始化完成，任务自杀 */
   vTaskDelete(NULL);
@@ -303,7 +300,7 @@ void StartTask03(void *argument)
   for(;;)
   {
      g_robot_pos.yaw = Get_zeroYaw();
-      Odometer_Update();
+     Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(50));
   }
   /* USER CODE END StartTask03 */
@@ -339,15 +336,14 @@ void StartTask04(void *argument)
 void StartTask05(void *argument)
 {
   /* USER CODE BEGIN StartTask05 */
-  // PCA9685_Set180Angle(1U, 0.0f);
-       osDelay(200);
+    osDelay(200);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
 //      Chassis_SetSpeed(0.0f,0.2f);
   /* Infinite loop */
   for(;;)
   {
     UpperCP_RX();
-     vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END StartTask05 */
 }
