@@ -121,8 +121,8 @@ void TOF200F_UartRxByte(uint8_t data)
         if (calc_crc == recv_crc)
         {
             uint16_t raw_dist = ((uint16_t)tof200f_rx_buf[3] << 8U) | (uint16_t)tof200f_rx_buf[4];
-            /* 合法测量值判断（0 ~ 2500mm 之间） */
-            if (raw_dist > 0U && raw_dist < 2500U)
+            /* 合法测量值判断（0 ~ 4000mm 之间） */
+            if (raw_dist > 0U && raw_dist < 4000U)
             {
                 TofData = (float)raw_dist;
                 /* 先写距离、后递增序号，使任务能够通过前后两次读取序号检查数据一致性。 */
