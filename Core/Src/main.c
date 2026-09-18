@@ -121,6 +121,7 @@ int main(void)
   MX_TIM8_Init();
   MX_USART6_UART_Init();
   MX_I2C2_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   /* UART5 使用循环 DMA 接收 K230/上位机命令；未启动 DMA 时 arm:x; 不会进入 UpperCP_RX。 */
