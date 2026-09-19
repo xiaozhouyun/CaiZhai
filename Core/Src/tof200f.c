@@ -1,22 +1,32 @@
 #include "tof200f.h"
 
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart6;
 
 /*
- * TOF200F 单次测距 Modbus-RTU 命令：
+ * 后置 TOF200F（USART1、地址 0x01）单次测距 Modbus-RTU 命令：
  * 01 03 00 10 00 01 85 CF
  */
 static uint8_t tof200f_start_single[] = {0x01, 0x03, 0x00, 0x10, 0x00, 0x01, 0x85, 0xCF};
 
 /* MODBUS 回包格式：01 03 02 [距离高8位] [距离低8位] [CRC低8位] [CRC高8位]，共 7 字节 */
-#define TOF200F_RX_FRAME_LEN 7
+#define TOF200F_RX_FRAME_LEN  7
+#define TOF200F_REAR_ADDRESS  0x01U
+#define TOF200F_FRONT_ADDRESS 0x02U
 
+/* 后置 TOF200F：USART1，Modbus 地址 0x01。 */
 volatile float TofData = 0.0f;
 /* 有效测距帧序号：只在 TofData 成功更新后递增，不能把错误帧当成新数据。 */
 volatile uint32_t TofFrameSeq = 0U;
 
-static uint8_t tof200f_rx_buf[TOF200F_RX_FRAME_LEN];
-static uint8_t tof200f_rx_index = 0;
+/* 前置 TOF200F：USART6，Modbus 地址 0x02。 */
+volatile float FrontTofData = 0.0f;
+volatile uint32_t FrontTofFrameSeq = 0U;
+
+static uint8_t tof200f_rear_rx_buf[TOF200F_RX_FRAME_LEN];
+static uint8_t tof200f_rear_rx_index = 0U;
+static uint8_t tof200f_front_rx_buf[TOF200F_RX_FRAME_LEN];
+static uint8_t tof200f_front_rx_index = 0U;
 
 /**
  * @brief  简易 MODBUS CRC16 校验计算
@@ -44,20 +54,95 @@ static uint16_t TOF200F_CalcCRC16(const uint8_t *buffer, uint16_t len)
 }
 
 /**
- * @brief  初始化 TOF200F 传感器串口中断
+ * @brief  解析一路 TOF200F 主动输出的 Modbus-RTU 距离帧
+ * @param  data             当前收到的字节
+ * @param  expected_address 本路传感器的 Modbus 地址
+ * @param  rx_buf           本路独立的 7 字节接收缓冲区
+ * @param  rx_index         本路独立的接收位置
+ * @param  distance         本路最新有效距离，单位 mm
+ * @param  frame_seq        本路有效帧序号
  */
-void TOF200F_Init(void)
+static void TOF200F_ParseByte(uint8_t data,
+                              uint8_t expected_address,
+                              uint8_t *rx_buf,
+                              uint8_t *rx_index,
+                              volatile float *distance,
+                              volatile uint32_t *frame_seq)
 {
-    tof200f_rx_index = 0U;
-    TofData = 0.0f;
-    TofFrameSeq = 0U;
+    /* 字节 0：等待本路传感器的 Modbus 地址。 */
+    if (*rx_index == 0U)
+    {
+        if (data == expected_address)
+        {
+            rx_buf[(*rx_index)++] = data;
+        }
+        return;
+    }
 
-    __HAL_UART_CLEAR_OREFLAG(&huart1);
-    __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+    /* 字节 1：TOF200F 距离帧功能码固定为 0x03。 */
+    if ((*rx_index == 1U) && (data != 0x03U))
+    {
+        *rx_index = (data == expected_address) ? 1U : 0U;
+        if (*rx_index == 1U)
+        {
+            rx_buf[0] = data;
+        }
+        return;
+    }
+
+    /* 字节 2：距离数据长度固定为 2 字节。 */
+    if ((*rx_index == 2U) && (data != 0x02U))
+    {
+        *rx_index = (data == expected_address) ? 1U : 0U;
+        if (*rx_index == 1U)
+        {
+            rx_buf[0] = data;
+        }
+        return;
+    }
+
+    rx_buf[(*rx_index)++] = data;
+
+    if (*rx_index >= TOF200F_RX_FRAME_LEN)
+    {
+        uint16_t calc_crc = TOF200F_CalcCRC16(rx_buf, 5U);
+        uint16_t recv_crc = (uint16_t)rx_buf[5] | ((uint16_t)rx_buf[6] << 8U);
+
+        if (calc_crc == recv_crc)
+        {
+            uint16_t raw_dist = ((uint16_t)rx_buf[3] << 8U) | (uint16_t)rx_buf[4];
+
+            if ((raw_dist > 0U) && (raw_dist < 4000U))
+            {
+                *distance = (float)raw_dist;
+                (*frame_seq)++;
+            }
+        }
+
+        *rx_index = 0U;
+    }
 }
 
 /**
- * @brief  触发一次 TOF200F 测距请求 (增加 50ms 安全超时)
+ * @brief  初始化前、后两个 TOF200F 的串口接收中断
+ */
+void TOF200F_Init(void)
+{
+    tof200f_rear_rx_index = 0U;
+    tof200f_front_rx_index = 0U;
+    TofData = 0.0f;
+    TofFrameSeq = 0U;
+    FrontTofData = 0.0f;
+    FrontTofFrameSeq = 0U;
+
+    __HAL_UART_CLEAR_OREFLAG(&huart1);
+    __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+    __HAL_UART_CLEAR_OREFLAG(&huart6);
+    __HAL_UART_ENABLE_IT(&huart6, UART_IT_RXNE);
+}
+
+/**
+ * @brief  通过 USART1 触发一次后置 TOF200F 测距请求（50ms 超时）
  */
 void get_dis(void)
 {
@@ -65,73 +150,23 @@ void get_dis(void)
 }
 
 /**
- * @brief  串口 1 逐字节中断接收与 MODBUS-RTU 协议状态机解析
+ * @brief  USART1 后置 TOF200F（地址 0x01）逐字节接收入口
  */
 void TOF200F_UartRxByte(uint8_t data)
 {
-    /* 字节 0: 校验地址码 0x01 */
-    if (tof200f_rx_index == 0U)
-    {
-        if (data == 0x01U)
-        {
-            tof200f_rx_buf[tof200f_rx_index++] = data;
-        }
-        return;
-    }
+    TOF200F_ParseByte(data, TOF200F_REAR_ADDRESS,
+                      tof200f_rear_rx_buf, &tof200f_rear_rx_index,
+                      &TofData, &TofFrameSeq);
+}
 
-    /* 字节 1: 校验功能码 0x03 */
-    if (tof200f_rx_index == 1U)
-    {
-        if (data != 0x03U)
-        {
-            /* 校验失败复位；若当前字节正好是 0x01，则作为新帧头处理 */
-            tof200f_rx_index = (data == 0x01U) ? 1U : 0U;
-            if (tof200f_rx_index == 1U)
-            {
-                tof200f_rx_buf[0] = data;
-            }
-            return;
-        }
-    }
-
-    /* 字节 2: 校验数据长度 0x02 */
-    if (tof200f_rx_index == 2U)
-    {
-        if (data != 0x02U)
-        {
-            tof200f_rx_index = (data == 0x01U) ? 1U : 0U;
-            if (tof200f_rx_index == 1U)
-            {
-                tof200f_rx_buf[0] = data;
-            }
-            return;
-        }
-    }
-
-    /* 存入数据 */
-    tof200f_rx_buf[tof200f_rx_index++] = data;
-
-    /* 接收满 7 字节完备帧 */
-    if (tof200f_rx_index >= TOF200F_RX_FRAME_LEN)
-    {
-        /* 计算 CRC16 校验 */
-        uint16_t calc_crc = TOF200F_CalcCRC16(tof200f_rx_buf, 5U);
-        uint16_t recv_crc = (uint16_t)tof200f_rx_buf[5] | ((uint16_t)tof200f_rx_buf[6] << 8U);
-
-        if (calc_crc == recv_crc)
-        {
-            uint16_t raw_dist = ((uint16_t)tof200f_rx_buf[3] << 8U) | (uint16_t)tof200f_rx_buf[4];
-            /* 合法测量值判断（0 ~ 4000mm 之间） */
-            if (raw_dist > 0U && raw_dist < 4000U)
-            {
-                TofData = (float)raw_dist;
-                /* 先写距离、后递增序号，使任务能够通过前后两次读取序号检查数据一致性。 */
-                TofFrameSeq++;
-            }
-        }
-
-        tof200f_rx_index = 0U;
-    }
+/**
+ * @brief  USART6 前置 TOF200F（地址 0x02）逐字节接收入口
+ */
+void TOF200F_FrontUartRxByte(uint8_t data)
+{
+    TOF200F_ParseByte(data, TOF200F_FRONT_ADDRESS,
+                      tof200f_front_rx_buf, &tof200f_front_rx_index,
+                      &FrontTofData, &FrontTofFrameSeq);
 }
 
 /**
