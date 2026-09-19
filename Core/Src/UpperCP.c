@@ -196,7 +196,6 @@ uint8_t UpperCP_GetLastByte(void)
 static char *ret = NULL;
 uint8_t PosFlag = 1;
 float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
-uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
 
 

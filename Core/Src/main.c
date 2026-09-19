@@ -160,8 +160,6 @@ int main(void)
   Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
   Odometer_Init();           /* 初始化编码器里程计 */
 
-  /* ================= 5. 业务逻辑与状态标志位初始化 ================= */
-  upordownFlag = 0;          /* 初始化上下抓取标志位 (默认 0: 抓地上，1: 抓树上) */
   /* USER CODE END 2 */
 
   /* Init scheduler */

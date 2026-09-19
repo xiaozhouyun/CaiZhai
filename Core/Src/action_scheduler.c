@@ -156,16 +156,15 @@ static void ActionScheduler_Debug(const char *event, uint8_t command)
      * 调试输出集中放在这里，方便串口上观察：
      * - event：当前发生的动作节点；
      * - state/busy：软件状态机是否还占用机构；
-     * - gimbal/retry/updown/tof：定位视觉和机构联动问题时最常看的现场量。
+     * - gimbal/retry/tof：定位视觉和机构联动问题时最常看的现场量。
      */
-    Vofa_Printf("[ARM_DBG] %s cmd=%u state=%s busy=%u gimbal=%.1f retry=%u updown=%u tof=%.1f\r\n",
+    Vofa_Printf("[ARM_DBG] %s cmd=%u state=%s busy=%u gimbal=%.1f retry=%u tof=%.1f\r\n",
                 event,
                 command,
                 ActionScheduler_StateName(s_state),
                 ActionScheduler_IsBusy() ? 1U : 0U,
                 PCA9685_Get180Angle(7U),
                 s_retry_count,
-                upordownFlag,
                 TofData);
 }
 
@@ -428,13 +427,8 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
             ActionScheduler_Debug((chassis_dir == 0U) ? "GIMBAL_REVERSE_LIMIT" : "GIMBAL_LIMIT", command);
             if (s_retry_count >= 1000U) {
                 /* 底盘多次调整后仍未对准，按 arm:5 流程放弃当前果实。 */
-                if (upordownFlag == 0U) {
-                    ActionScheduler_StartSkip();
-                    ActionScheduler_Debug("GIVEUP_SKIP", command);
-                } else {
-                    ActionScheduler_Debug("GIVEUP_TREE", command);
-                    App_NotifyGrabDone();
-                }
+                ActionScheduler_StartSkip();
+                ActionScheduler_Debug("GIVEUP_SKIP", command);
             } else {
                 /* 云台保持当前角度，底盘移动 100mm 后等待相机重新反馈。 */
                 Emm_V5_Chassis_Pos_Control(chassis_dir, 50, 20, ARM_CHASSIS_ALIGN_STEP_MM);
@@ -455,11 +449,6 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
     } else if (command == 0U) {
         /* 正常抓取：先触发测距，等待 ARM_TOF_SETTLE_MS 后读取 TofData 计算伸臂量。 */
         s_retry_count = 0U;
-        if (upordownFlag != 0U) {
-            /* 树上果当前不执行地面抓取动作，直接让路线继续。 */
-            App_NotifyGrabDone();
-            return;
-        }
         get_dis();
         s_state = ACTION_GRAB_WAIT_DISTANCE;
         ActionScheduler_SetDeadline(ARM_TOF_SETTLE_MS);
@@ -467,20 +456,10 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
     } else if (command == 5U) {
         /* 跳过目标：升至安全高度后收臂、云台回中，再通知路线继续。 */
         s_retry_count = 0U;
-        if (upordownFlag == 0U) {
-            ActionScheduler_StartSkip();
-            ActionScheduler_Debug("SKIP_START", command);
-        } else {
-            /* 树上果跳过不需要移动地面升降/伸缩机构。 */
-            App_NotifyGrabDone();
-        }
+        ActionScheduler_StartSkip();
+        ActionScheduler_Debug("SKIP_START", command);
     } else if (command == 6U) {
         /* 坏果清理沿用放置流程，但伸臂距离比正常抓取少 1cm。 */
-        if (upordownFlag != 0U) {
-            /* 树上坏果同样不进入本地地面抓取机构流程。 */
-            App_NotifyGrabDone();
-            return;
-        }
         get_dis();
         s_state = ACTION_BAD_WAIT_DISTANCE;
         ActionScheduler_SetDeadline(ARM_BAD_TOF_SETTLE_MS);
