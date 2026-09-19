@@ -65,7 +65,7 @@
  * - arm:1/2 视觉水平微调：云台每次小角度左/右转；向外到 90 度后前移，向内回转到 80 度后后退；
  * - arm:3/4 视觉垂直微调：升降台上/下移动 1cm；
  * - arm:5 跳过目标：不抓取，执行收臂、抬升、云台切视野/回中，然后通知路线继续；
- * - arm:6 坏果处理：按坏果流程夹取/释放，再复用通用放置复位流程。
+ * - arm:6 坏果处理：抓取后向中位移动15度并释放，再收臂、抬升、回中。
  */
 typedef enum {
     ACTION_IDLE,
@@ -105,13 +105,31 @@ typedef enum {
     /* 跳过目标时云台正在切视野或回中；插补完成并停稳后通知路线跳至下一个任务。 */
 
     ACTION_BAD_WAIT_DISTANCE,
-    /* arm:6 已触发测距；等待 ARM_BAD_TOF_SETTLE_MS 后按 TofData 伸臂并闭爪。 */
+    /* arm:6 已触发测距；等待 ARM_BAD_TOF_SETTLE_MS 后先打开夹爪。 */
+
+    ACTION_BAD_WAIT_OPEN,
+    /* 坏果抓取前夹爪正在打开；等待完成后按 TofData 伸臂。 */
+
+    ACTION_BAD_WAIT_EXTEND,
+    /* 坏果抓取臂正在伸出；等待到位后闭爪。 */
 
     ACTION_BAD_WAIT_CLOSE,
-    /* 坏果已夹紧；等待 ARM_CLAW_CLOSE_MS 后开爪，维持原坏果处理的动作节拍。 */
+    /* 坏果已夹紧；等待抓稳后将云台朝中位移动15度。 */
 
-    ACTION_BAD_WAIT_OPEN
-    /* 坏果夹爪已打开；等待 ARM_BAD_RELEASE_SETTLE_MS 后进入通用放置/复位流程。 */
+    ACTION_BAD_WAIT_ROTATE,
+    /* 云台正在朝中位移动15度；到位并停稳后开爪释放坏果。 */
+
+    ACTION_BAD_WAIT_RELEASE,
+    /* 坏果夹爪已打开；等待坏果离爪后收回伸缩臂。 */
+
+    ACTION_BAD_WAIT_RETRACT,
+    /* 伸缩臂正在收回；等待完成后抬升。 */
+
+    ACTION_BAD_WAIT_LIFT,
+    /* 升降台正在抬升；等待完成后云台回中。 */
+
+    ACTION_BAD_WAIT_CENTER
+    /* 云台正在回中；完成后通知路线前往下一个点。 */
 } ActionState_t;
 
 static ActionState_t s_state;       /* 当前动作阶段；由 ActionScheduler_Tick() 根据 s_deadline 推进 */
@@ -144,8 +162,14 @@ static const char *ActionScheduler_StateName(ActionState_t state)
     case ACTION_SKIP_WAIT_EXTEND:    return "SKIP_EXTEND";
     case ACTION_SKIP_WAIT_ROTATE:    return "SKIP_ROTATE";
     case ACTION_BAD_WAIT_DISTANCE:   return "BAD_DISTANCE";
-    case ACTION_BAD_WAIT_CLOSE:      return "BAD_CLOSE";
     case ACTION_BAD_WAIT_OPEN:       return "BAD_OPEN";
+    case ACTION_BAD_WAIT_EXTEND:     return "BAD_EXTEND";
+    case ACTION_BAD_WAIT_CLOSE:      return "BAD_CLOSE";
+    case ACTION_BAD_WAIT_ROTATE:     return "BAD_ROTATE";
+    case ACTION_BAD_WAIT_RELEASE:    return "BAD_RELEASE";
+    case ACTION_BAD_WAIT_RETRACT:    return "BAD_RETRACT";
+    case ACTION_BAD_WAIT_LIFT:       return "BAD_LIFT";
+    case ACTION_BAD_WAIT_CENTER:     return "BAD_CENTER";
     default:                         return "UNKNOWN";
     }
 }
@@ -271,7 +295,7 @@ static void ActionScheduler_StartPut(ActionState_t first_state)
     /*
      * 放置顺序必须是：先收缩臂 -> 再抬升10cm -> 最后转云台。
      * 收缩臂命令先下发，等待其完成后才允许升降台动作。
-     * first_state 用来复用同一套“收臂后的流程入口”，正常果和坏果都走这里。
+     * first_state 是正常果放置流程的“收臂后入口”。
      */
     (void)PCA9685_Set180Angle(6U, -80.0f);
     s_state = first_state;
@@ -459,7 +483,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         ActionScheduler_StartSkip();
         ActionScheduler_Debug("SKIP_START", command);
     } else if (command == 6U) {
-        /* 坏果清理沿用放置流程，但伸臂距离比正常抓取少 1cm。 */
+        /* 坏果清理：测距抓取后先向中位移动15度并释放，再执行收臂、抬升、回中。 */
         get_dis();
         s_state = ACTION_BAD_WAIT_DISTANCE;
         ActionScheduler_SetDeadline(ARM_BAD_TOF_SETTLE_MS);
@@ -606,24 +630,90 @@ void ActionScheduler_Tick(void)
         App_NotifyGrabDone();
         break;
     case ACTION_BAD_WAIT_DISTANCE:
-        /* 坏果流程同样使用函数内统一的 7cm ToF 补偿。 */
+        /* 抓取前先开爪，避免夹爪闭合状态下直接伸向坏果。 */
+        (void)PCA9685_Set180Angle(5U, -30.0f);
+        s_state = ACTION_BAD_WAIT_OPEN;
+        ActionScheduler_SetDeadline(ARM_CLAW_OPEN_MS);
+        ActionScheduler_Debug("BAD_OPEN", 6U);
+        break;
+    case ACTION_BAD_WAIT_OPEN:
+        /* 使用函数内统一的 ToF 补偿伸向坏果，伸臂完成后才能闭爪。 */
         ActionScheduler_SetExtendCm(TofData / 10.0f);
+        s_state = ACTION_BAD_WAIT_EXTEND;
+        ActionScheduler_SetDeadline(ARM_EXTEND_SETTLE_MS);
+        ActionScheduler_Debug("BAD_EXTEND", 6U);
+        break;
+    case ACTION_BAD_WAIT_EXTEND:
+        /* 伸臂到位后闭爪抓取坏果。 */
         (void)PCA9685_Set180Angle(5U, 3.0f);
         s_state = ACTION_BAD_WAIT_CLOSE;
         ActionScheduler_SetDeadline(ARM_CLAW_CLOSE_MS);
         ActionScheduler_Debug("BAD_GRIP", 6U);
         break;
     case ACTION_BAD_WAIT_CLOSE:
-        /* 坏果夹紧保持一段时间后开爪，执行原有清理节拍。 */
+        /* 抓稳后从当前位置朝0度中位移动15度；不足15度时直接到0度。 */
+        {
+            float cur = PCA9685_Get180Angle(7U);
+            float target = 0.0f;
+            uint32_t dur;
+
+            if (cur > 15.0f) {
+                target = cur - 15.0f;
+            } else if (cur < -15.0f) {
+                target = cur + 15.0f;
+            }
+            dur = (uint32_t)(fabsf(target - cur) * 13.0f);
+            if (dur < 300U) dur = 300U;
+            ActionScheduler_StartGimbalMoveInternal(target, dur, false);
+            s_state = ACTION_BAD_WAIT_ROTATE;
+            ActionScheduler_SetDeadline(dur + ARM_GIMBAL_SETTLE_MS);
+        }
+        ActionScheduler_Debug("BAD_MOVE_CENTER_15", 6U);
+        break;
+    case ACTION_BAD_WAIT_ROTATE:
+        /* 云台到位并停稳后开爪，把坏果放到当前位置。 */
+        if (ActionScheduler_IsGimbalBusy()) {
+            return;
+        }
         (void)PCA9685_Set180Angle(5U, -30.0f);
-        s_state = ACTION_BAD_WAIT_OPEN;
+        s_state = ACTION_BAD_WAIT_RELEASE;
         ActionScheduler_SetDeadline(ARM_BAD_RELEASE_SETTLE_MS);
         ActionScheduler_Debug("BAD_RELEASE", 6U);
         break;
-    case ACTION_BAD_WAIT_OPEN:
-        /* 开爪等待结束后抬升，并转入通用收臂、回中、开爪流程。 */
-        ActionScheduler_StartPut(ACTION_PUT_WAIT_EXTEND);
-        ActionScheduler_Debug("BAD_PUT", 6U);
+    case ACTION_BAD_WAIT_RELEASE:
+        /* 坏果离爪后先收回伸缩臂。 */
+        (void)PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
+        s_state = ACTION_BAD_WAIT_RETRACT;
+        ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
+        ActionScheduler_Debug("BAD_RETRACT", 6U);
+        break;
+    case ACTION_BAD_WAIT_RETRACT:
+        /* 收臂完成后抬升到安全高度。 */
+        Move_Pos(27.0f);
+        s_state = ACTION_BAD_WAIT_LIFT;
+        ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
+        ActionScheduler_Debug("BAD_LIFT", 6U);
+        break;
+    case ACTION_BAD_WAIT_LIFT:
+        /* 抬升完成后从当前角度平滑回到0度中位。 */
+        {
+            float delta = fabsf(PCA9685_Get180Angle(7U));
+            uint32_t dur = (uint32_t)(delta * 13.0f);
+            if (dur < 300U) dur = 300U;
+            ActionScheduler_StartGimbalMoveInternal(0.0f, dur, false);
+            s_state = ACTION_BAD_WAIT_CENTER;
+            ActionScheduler_SetDeadline(dur + ARM_GIMBAL_SETTLE_MS);
+        }
+        ActionScheduler_Debug("BAD_CENTER", 6U);
+        break;
+    case ACTION_BAD_WAIT_CENTER:
+        /* 回中结束，坏果处理完成，路线继续前往下一个点。 */
+        if (ActionScheduler_IsGimbalBusy()) {
+            return;
+        }
+        s_state = ACTION_IDLE;
+        ActionScheduler_Debug("BAD_DONE", 6U);
+        App_NotifyGrabDone();
         break;
     default:
         break;
