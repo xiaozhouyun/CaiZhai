@@ -148,14 +148,29 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 void UpperCP_SendTask(const char *task)
 {
     static const char line_end[] = "\r\n";
+    uint8_t valid_task = 0U;
 
     if (task == NULL) {
         return;
     }
 
-    if ((strcmp(task, "send") != 0) &&
-        (strcmp(task, "pour") != 0) &&
-        (strcmp(task, "scan") != 0)) {
+    if ((strcmp(task, "send") == 0) ||
+        (strcmp(task, "pour") == 0) ||
+        (strcmp(task, "scan") == 0)) {
+        valid_task = 1U;
+    } else if (strncmp(task, "send:", 5U) == 0) {
+        const char *position_text = task + 5;
+        char *end;
+        long position = strtol(position_text, &end, 10);
+
+        if ((position_text[0] >= '1') && (position_text[0] <= '9') &&
+            (*end == '\0') &&
+            (position >= 1L) && (position <= 12L)) {
+            valid_task = 1U;
+        }
+    }
+
+    if (valid_task == 0U) {
         return;
     }
 
@@ -181,17 +196,19 @@ uint8_t UpperCP_GetLastByte(void)
 static char *ret = NULL;
 uint8_t PosFlag = 1;
 float angle_dif1 = 0.0f;         /**< 旋转角度微调步进增量全局变量 */
-uint8_t upordownFlag = 0;        /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 uint8_t CameraFlag = 0;
 
+
+static const uint8_t k_default_fruits[8] = {4, 3, 1, 10, 8, 9, 2, 11};
 /* uint8_t fruits[8] = {3,5,7,1,6,10,12,9}; */
-uint8_t fruits[8] = {4,3,1,10,8,9,2,11};
+uint8_t fruits[8] = { 4, 3, 1, 10, 8, 9, 2, 11};
 /* uint8_t fruits[8] = {12,2,9,4,5,11,1,7}; */
 
 uint8_t fruits_count = 0;
 
 void UpperCP_ResetQrResult(void)
 {
+    memcpy(fruits, k_default_fruits, sizeof(fruits));
     fruits_count = 0U;
     CameraFlag = 0U;
 }
@@ -225,8 +242,8 @@ void UpperCP_RX(void)
         return;
     }
 
-    /* 将上位机 UpperCP 接收到的原始命令数据通过 VOFA+ 打印输出 */
-    Vofa_PrintUpperCPData(uppercp_cmd_buf);
+    // /* 将上位机 UpperCP 接收到的原始命令数据通过 VOFA+ 打印输出 */
+    // Vofa_PrintUpperCPData(uppercp_cmd_buf);
 
     ret = strtok(uppercp_cmd_buf, ":");
     if (ret != NULL) {

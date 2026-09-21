@@ -29,6 +29,13 @@ char Inmature[] = "/00019";
 char Bad[] = "/00020";
 char Music[] = "/00099";
 
+/* 二维码位置 1~12 对应语音文件 00031~00042。 */
+static char position_voice_paths[12][7] = {
+    "/00031", "/00032", "/00033", "/00034",
+    "/00035", "/00036", "/00037", "/00038",
+    "/00039", "/00040", "/00041", "/00042"
+};
+
 /* 数字音频索引表，下标 1~10 分别对应 num1~num10；下标 0 不播放数字。 */
 static char *numArray[] = {0, num1, num2, num3, num4, num5, num6, num7, num8, num9, num10};
 
@@ -223,11 +230,18 @@ void JQ8x00_Loop_times2(void)
 
 /**
   * @brief  按编号播放预设语音
-  * @param  Num 语音编号：1~10 为数字，11~20 为水果/状态，99 为音乐
+  * @param  Num 语音编号：1~10 为数字，11~20 为水果/状态，31~42 为二维码位置，99 为音乐
   * @note   Num 为 0 时结束播放；其他未定义编号会被忽略。
   */
 void Voice_Num(int Num)
 {
+    if ((Num >= 31) && (Num <= 42))
+    {
+        JQ8x00_RandomPathPlay_Inserch(JQ8X00_FLASH,
+                                      position_voice_paths[Num - 31]);
+        return;
+    }
+
     switch (Num)
     {
         case 0:  JQ8x00_Over(); break;

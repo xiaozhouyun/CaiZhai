@@ -5,9 +5,16 @@
 
 /** TOF200F 激光测距传感器原始测量距离值 (毫米 mm，除以 10.0 转换为厘米 cm) */
 extern volatile float TofData;
+/** 每收到一帧 CRC 正确且距离有效的 TOF 数据后递增，供任务判断 TofData 是否为新测量值 */
+extern volatile uint32_t TofFrameSeq;
+/** 前置 TOF200F（USART6、地址 0x02）的最新有效距离，单位 mm */
+extern volatile float FrontTofData;
+/** 前置 TOF200F 每收到一帧 CRC 正确且距离有效的数据后递增 */
+extern volatile uint32_t FrontTofFrameSeq;
 
 void TOF200F_Init(void);
 void TOF200F_UartRxByte(uint8_t data);
+void TOF200F_FrontUartRxByte(uint8_t data);
 float TOF200F_GetDistanceCm(void);
 void get_dis(void);
 

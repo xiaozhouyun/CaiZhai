@@ -19,17 +19,14 @@
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     /* 检查是否为按键 1、按键 2 或按键 3 的中断触发 */
-    if (GPIO_Pin == key1_Pin || GPIO_Pin == key2_Pin || GPIO_Pin == key3_Pin)
+    if (GPIO_Pin == key2_Pin || GPIO_Pin == key3_Pin)
     {
         /* 先翻转一次 user_led 灯 (PB2) */
         HAL_GPIO_TogglePin(user_led_GPIO_Port, user_led_Pin);
 
         /* 针对不同按键的后续逻辑分支 */
-        if (GPIO_Pin == key1_Pin)
-        {
-            /* Key1 按下处理 */
-        }
-        else if (GPIO_Pin == key2_Pin)
+    
+    if (GPIO_Pin == key2_Pin)
         {
             /* Key2 按下处理 */
               
@@ -40,6 +37,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
                 s_app_running = true;
                 s_stop_requested = false;
                 App_SetMode(APP_MODE_ROUTE_A);
+                //   App_SetMode(APP_MODE_TEST);
         }
     }
 }

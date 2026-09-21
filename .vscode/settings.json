@@ -5,9 +5,9 @@
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 0,
     "python.analysis.extraPaths": [
-        "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_stubs\\ccb5ce5bc04880294c1235494fe9ce4a4cde6a13"
+        "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_stubs\\b3211026add55b02dad803f6ec7b19e3fb978acf"
     ],
-    "python.analysis.stubPath": "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_pylance\\62d71e2cbfd32389\\typings",
+    "python.analysis.stubPath": "C:\\Users\\ZhouJL\\.kendryte\\k230_canmv_pylance\\12363e21a3f02246\\typings",
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingModuleSource": "none"
     }

@@ -56,6 +56,14 @@ static float Odometer_CalcDeltaMm(float angle_deg, OdometerWheelState *wheel)
     } else if (delta_deg < -180.0f) {
         delta_deg += 360.0f;
     }
+
+    /* 回绕一次后偏差仍超出 ±180 度，说明回帧被 RS485 总线碰撞/错帧污染。
+       垃圾角度可达上千万度，直接累加会把坐标瞬间打飞（如 y 突然变成 42680），
+       本次增量按 0 处理，等下一帧有效数据自行恢复。 */
+    if (delta_deg > 180.0f || delta_deg < -180.0f) {
+        return 0.0f;
+    }
+
     return delta_deg * ODOMETER_DEG_TO_MM;
 }
 
@@ -76,6 +84,14 @@ static void Odometer_UpdateNavigationIfPairReady(void)
     /* 融合完毕后，清除数据就绪标志，等待下一采样周期 */
     odom_left.has_delta = 0U;
     odom_right.has_delta = 0U;
+
+    /* 原地转向时轮子会大量反向转动，但车体中心不应产生前后位移。
+       若把转向轮动累计进 x/y，跑久后 0 点会随转向次数漂移。 */
+    if (navigation_state == NAVIGATION_STATE_TARGET_ALIGN ||
+        navigation_state == NAVIGATION_STATE_ARRIVED) {
+        motor_half_delta_mm = 0.0f;
+        return;
+    }
     
     /* 调用导航定位的累加函数更新当前机器人的二维绝对世界坐标（结合陀螺仪读出的 g_robot_pos.yaw） */
     Navigation_UpdateByDelta(motor_half_delta_mm, g_robot_pos.yaw);

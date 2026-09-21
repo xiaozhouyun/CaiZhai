@@ -11,15 +11,20 @@ typedef enum {
     APP_MODE_IDLE,      /**< 空闲模式：机器人处于静止状态，不执行任何航线 */
     APP_MODE_TEST,      /**< 测试模式：用于调试和测试功能，可能包含自定义的测试逻辑 */
     APP_MODE_ROUTE_A,   /**< 航线 A 模式：执行第一阶段的路径导航（例如向深处前行） */
-    APP_MODE_ROUTE_B,   /**< 航线 B 模式：预留模式 */
+    APP_MODE_ROUTE_B,   /**< 航线 B 入口模式：从 C 区底部进入 B 区扫码点 */
+    APP_MODE_SCAN_B,    /**< B 区扫码占位模式：当前直接进入 B 区抓取路线 */
     APP_MODE_SCAN_C,    /**< C 区扫码模式：发送 scan 后等待二维码或 10 秒超时 */
+    APP_MODE_ROUTE_C_ENTRY, /**< C 区入口模式：根据首个作业位置选择左/右入口 */
+    APP_MODE_CALIBRATE_C,   /**< C 区 TOF 校准模式：车尾距挡板 200mm 后将 Y 置零 */
     APP_MODE_ROUTE_C,   /**< 航线 C 模式：执行第二阶段的路径导航（例如折返或区域内作业） */
-    APP_MODE_BACK       /**< 返回模式：执行返回动作，例如回到起始点 */
+    APP_MODE_BACK,      /**< 返回模式：执行返回动作，例如回到起始点 */
+    APP_MODE_CALIBRATE_B /**< B 区入口双轴 TOF 校准：先校准 Y，再校准 X */
 } AppMode_t;
 
 #define APP_ACTION_NONE      0x00U
 #define APP_ACTION_POSITIVE  0x01U
 #define APP_ACTION_NEGATIVE  0x02U
+#define APP_CAMERA_CENTER_DEG 40.0f
 
 /**
  * @brief 路径点（航点）结构体
@@ -30,6 +35,8 @@ typedef struct {
     float yaw_rad;      /**< 目标点朝向角，单位：弧度 */
     bool has_action;    /**< 是否在到达目标点后执行舵机动作 (true/false) */
     uint8_t action_mask;/**< 云台作业方向：APP_ACTION_POSITIVE/NEGATIVE 位组合 */
+    uint8_t positive_position; /**< +90 度视野对应的 C 区位置，0 表示普通视觉任务 */
+    uint8_t negative_position; /**< -90 度视野对应的 C 区位置，0 表示普通视觉任务 */
 } AppWaypoint_t;
 
 /* 全局应用模式变量，由导航任务或串口控制修改 */

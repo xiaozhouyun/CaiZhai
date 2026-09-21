@@ -3,15 +3,18 @@
 #include "arms.h"
 #include "tiancan.h"
 #include "navigation.h"
+#include "hwt101_hal.h"
 #include "usart.h"
 #include "bujin.h"
 #include "voice.h"
 #include "pca9685.h"
 #include "UpperCP.h"
 #include "action_scheduler.h"
+#include "tof200f.h"
 #include "cmsis_os.h"
 #include "vofa.h"
 #include <math.h>
+#include <stdio.h>
 /* 定义 PI 常量，避免未定义标识符 */
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -19,14 +22,43 @@
 
 /* 获取航线数组的元素个数 */
 #define APP_ROUTE_LEN(route) ((uint8_t)(sizeof(route) / sizeof((route)[0])))
-#define APP_ROUTE_LIFT_SETTLE_MS      1800U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
+#define APP_ROUTE_LIFT_SETTLE_MS      2200U  /* 升至 25cm 后等待升降台实际到位，再转云台 */
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
-#define APP_QR_SCAN_TIMEOUT_MS       10000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
+#define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
+#define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* send 后无上位机消息时，延时后启动摄像头搜索 */
+#define APP_VISION_CAMERA_SEARCH_DWELL_MS 2000U /* 摄像头搜索每个固定角度停留时间 */
+#define APP_QR_CAMERA_SCAN_START_DEG  60.0f  /* 二维码相机第一档俯仰角 */
+#define APP_QR_CAMERA_SCAN_MIDDLE_DEG 70.0f  /* 二维码相机第二档俯仰角 */
+#define APP_QR_CAMERA_SCAN_END_DEG    80.0f  /* 二维码相机第三档俯仰角 */
+#define APP_QR_GIMBAL_LEFT_DEG       -20.0f  /* 二维码搜索左侧最大角度 */
+#define APP_QR_GIMBAL_RIGHT_DEG       20.0f  /* 二维码搜索右侧最大角度 */
+#define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
+#define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
+#define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
+#define APP_C_TOF_TARGET_MM          200.0f   /* 车尾 TOF 到 C 区底部挡板的目标距离，单位：mm */
+#define APP_C_TOF_TOLERANCE_MM        10.0f   /* 校准允许误差：190~210mm 均视为进入目标范围 */
+#define APP_C_TOF_SPEED_MM_S          30.0f   /* C 区校准时前后移动的低速线速度，单位：mm/s */
+#define APP_C_TOF_TIMEOUT_MS        10000U     /* 整个校准流程最长时间，超时停车并中止路线 */
+#define APP_C_TOF_FRAME_STALE_MS     300U     /* 持续移动时超过 300ms 无新帧，立即停车等待数据 */
+#define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
+#define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
+#define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
+#define APP_B_TOF_X_TARGET_MM        1300.0f   /* 车头朝 -90° 时，车尾 TOF 到侧后方基准面的目标距离；达标后将 X 标定为 -950 */
+#define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
+#define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
+#define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
+#define APP_QR_SCAN_RIGHT             2U     /* 扫码云台阶段：从中位右转到 +20 度 */
+#define APP_QR_SCAN_CENTER_FROM_RIGHT 3U     /* 扫码云台阶段：从右侧回中 */
 /* 方便定义路径点（X_mm, Y_mm, Yaw_rad, has_action）的辅助宏 */
 #define WAYPOINT(x, y, yaw, act)    {(x), (y), (yaw), (act), \
-                                     ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE)}
+                                     ((act) ? (APP_ACTION_POSITIVE | APP_ACTION_NEGATIVE) : APP_ACTION_NONE), \
+                                     0U, 0U}
 #define WAYPOINT_NO_ACT(x, y, yaw)  WAYPOINT((x), (y), (yaw), false)
 #define WAYPOINT_ACT(x, y, yaw)     WAYPOINT((x), (y), (yaw), true)
+#define WAYPOINT_SIDE(x, y, yaw, action) \
+    {(x), (y), (yaw), true, (action), 0U, 0U}
 
 /* 当前系统的全局应用模式 */
 volatile AppMode_t g_app_mode = APP_MODE_IDLE;
@@ -34,18 +66,54 @@ volatile AppMode_t g_app_mode = APP_MODE_IDLE;
 /* 全局抓取使能开关：true 开启抓取（默认），false 则只跑点不抓取 */
 volatile bool g_enable_grasp_logic =1;
 
-/* 内部状态变量：路径导航是否运行中，是否收到停止请求 */
-volatile bool s_app_running;
-volatile bool s_stop_requested;
-static volatile bool s_grab_done;      /* 视觉动作机完成一次处理后置位 */
-static const AppWaypoint_t *s_route;   /* 当前执行路线；A 指向常量，C 指向下方静态副本 */
-static AppWaypoint_t s_dynamic_route[12]; /* C 区规划结果，不能使用函数栈数组 */
-static uint8_t s_route_len;
-static uint8_t s_route_index;
-static AppMode_t s_route_next_mode;
-static uint32_t s_route_deadline;
-static bool s_qr_scan_started;
-static uint32_t s_qr_scan_deadline;
+/* 内部状态变量：路径导航、视觉动作、二维码扫描和倒料流程的运行现场 */
+volatile bool s_app_running;           /* 应用路线运行标志：true 表示当前有路线任务在执行，停止或路线结束后清零 */
+volatile bool s_stop_requested;        /* 外部停止请求标志：按键/指令请求停车后置位，App_RunCurrentMode() 统一执行停止并清零 */
+static volatile bool s_grab_done;      /* 视觉抓取完成标志：ActionScheduler 完成一次 send/arm 处理后置位，路线状态机等待它继续下一步 */
+static const AppWaypoint_t *s_route;   /* 当前执行路线指针：A/B 指向常量路线，C/返程可指向 s_dynamic_route 动态路线副本 */
+static AppWaypoint_t s_dynamic_route[APP_ROUTE_C_MAX_WAYPOINTS]; /* C 区二维码顺序或返程临时路线缓存，避免使用函数栈数组 */
+static uint8_t s_route_len;            /* 当前路线的航点总数，用于判断 s_route_index 是否已经跑完 */
+static uint8_t s_route_index;          /* 当前正在执行的航点下标，到点并完成附加动作后递增 */
+static AppMode_t s_route_next_mode;    /* 当前路线完成后要切换到的下一个应用模式，通常用于 A/B/C/返程衔接 */
+static uint32_t s_route_deadline;      /* 非阻塞等待截止时刻，升降台、云台、倒料等延时状态共用该时间戳 */
+static bool s_qr_scan_started;         /* C 区二维码扫描是否已启动，防止在等待二维码期间重复发送扫描请求 */
+static uint32_t s_qr_scan_deadline;    /* C 区二维码扫描超时时刻，超过后使用默认路线继续执行 */
+static bool s_route_pour_sent;         /* C 区倒料点 pour 指令发送标志，确保同一个倒料等待阶段只发送一次 pour */
+static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转、左回中、右转、右回中循环 */
+static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
+static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
+static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
+static bool s_vision_camera_search_active; /* send 后无上位机消息时，是否启用摄像头上下搜索 */
+static uint32_t s_vision_send_tick;     /* 最近一次 send 下发时刻 */
+static uint32_t s_vision_send_rx_count; /* send 下发时记录的上位机 UART5 接收字节计数 */
+static uint8_t s_route_c_start_node_idx; /* 本次 C 区路线入口节点：0=左下入口，11=右下入口 */
+static bool s_c_tof_cal_started;         /* 是否已建立本轮 TOF 校准的时间和帧序号基准 */
+static uint8_t s_c_tof_stable_frames;    /* 连续落入 190~210mm 范围的有效帧计数 */
+static uint32_t s_c_tof_last_seq;        /* 校准状态机最近一次处理的 TofFrameSeq */
+static uint32_t s_c_tof_start_tick;      /* 本轮校准起始时刻，用于 5s 总超时保护 */
+static uint32_t s_c_tof_last_frame_tick; /* 最近一次有效新帧时刻，用于运动中的断帧停车保护 */
+
+typedef enum {
+    APP_B_CAL_ROTATE_Y_START,    /* 下发原地转向 0° 的导航请求 */
+    APP_B_CAL_WAIT_YAW_0,       /* 等待导航完成 0° 转向，确保车尾 TOF 正对 Y 轴基准面 */
+    APP_B_CAL_ADJUST_Y,         /* 闭环调整到 200mm，达标后把 Y 坐标置 0 */
+    APP_B_CAL_ROTATE_X_START,   /* 下发原地转向 -90° 的导航请求 */
+    APP_B_CAL_WAIT_YAW_NEG_90,  /* 等待导航完成 -90° 转向，确保车尾 TOF 正对 X 轴基准面 */
+    APP_B_CAL_ADJUST_X          /* 闭环调整到 1250mm，达标后把 X 坐标置 -950 */
+} AppBCalibrationState_t;
+
+typedef enum {
+    APP_TOF_CAL_IN_PROGRESS,    /* 未达标或正在等待新 TOF 帧，下一个 Tick 继续 */
+    APP_TOF_CAL_DONE,           /* 连续稳定帧均落入容差范围，允许写入坐标基准 */
+    APP_TOF_CAL_FAILED          /* 校准超时，必须停车退出，禁止使用未校准坐标继续路线 */
+} AppTofCalibrationResult_t;
+
+static AppBCalibrationState_t s_b_cal_state; /* B 区入口双轴校准当前阶段 */
+static bool s_b_tof_cal_started;             /* 当前轴是否已建立超时与新帧基准 */
+static uint8_t s_b_tof_stable_frames;        /* 当前轴连续落入目标容差的 TOF 帧数 */
+static uint32_t s_b_tof_last_seq;            /* 已处理的最新 TofFrameSeq，防止重复使用旧数据 */
+static uint32_t s_b_tof_start_tick;          /* 当前轴校准起始时刻，用于总超时保护 */
+static uint32_t s_b_tof_last_frame_tick;     /* 最近有效新帧时刻，运动中断帧时用于及时停车 */
 
 /* 路线状态机：每次 Tick 最多下发一个阶段动作，绝不等待导航或视觉结果。 */
 typedef enum {
@@ -54,6 +122,9 @@ typedef enum {
 
     APP_ROUTE_WAIT_NAVIGATION,
     /* 已向 Navigation_Request 下发当前航点，等待 Navigation_IsIdle() 到点。 */
+
+    APP_ROUTE_WAIT_POUR,
+    /* C 区倒料点已发送 pour，等待 2 秒后继续下一航点。 */
 
     APP_ROUTE_FIRST_WAIT_LIFT,
     /* 作业点第一视野：已抬升到 25cm，等待到位后向 +90度转云台。 */
@@ -112,31 +183,60 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
     WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
     WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 0.0f, 0.0f, 0),
-    WAYPOINT(-2600.0f, 10.0f, -PI/2, false),
+    WAYPOINT(0.0f, 0.0f, PI/2, 0),
+    WAYPOINT(-2600.0f, 0.0f, PI/2, false),
+};
+
+/* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
+static const AppWaypoint_t k_route_b[] = {
+    WAYPOINT_SIDE(-950.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f,  700.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1900.0f, 10.0f, PI, false),
-    WAYPOINT(-1900.0f, 400.0f, PI, 0),
-    WAYPOINT(-1900.0f, 900.0f, PI, 0),
-    WAYPOINT(-1900.0f, 1400.0f, PI, 0),
-    WAYPOINT(-1900.0f, 1900.0f, PI, 0),
-    WAYPOINT(-1900.0f, 2350.0f, PI, false),
-    WAYPOINT(-2600.0f, 2350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1850.0f, 0, 0),
-    WAYPOINT(-2600.0f, 1350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 850.0f, 0, 0),
-    WAYPOINT(-2600.0f, 350.0f, 0, 0),
-    WAYPOINT(-2600.0f, 10.0f, 0, false),
+    WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
+    WAYPOINT(-1965.0f, 370.0f, 0, 0),
+    WAYPOINT(-1965.0f, 860.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1360.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1870.0f, 0, 0),
+    WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
+    WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
+    WAYPOINT(-2615.0f, 1850.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1350.0f, 0, 0),
+    WAYPOINT(-2615.0f, 860.0f, 0, 0),
+    WAYPOINT(-2615.0f, 370.0f, 0, 0),
+    WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
+
+static float App_CurrentMoveHeadingBiasRad(void)
+{
+    /* A 区第 6 个航点对应从 (0,0) 倒车到 C 区扫码点的长直线。 */
+    if (s_route == k_route_a && s_route_index == 5U) {
+        return APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD;
+    }
+    return 0.0f;
+}
 
 /* 内部静态函数：执行特定的一组航线点，并跳转到指定的下一个模式 */
 static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
                            AppMode_t next_mode);
 static void App_RouteTick(void);
 static void App_SendVisionTask(void);
+static void App_VisionCameraSearchTick(void);
+static void App_VisionCameraSearchReset(void);
+static void App_QrScanSweepTick(void);
+static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node);
+static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position);
+static void App_RouteC_TofCalibrationTick(void);
+static void App_RouteB_TofCalibrationTick(void);
+static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm);
 
 /**
  * @brief 初始化应用层状态
@@ -151,6 +251,24 @@ void App_Init(void)
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
     s_qr_scan_started = false;
+    s_route_pour_sent = false;
+    s_qr_scan_phase = APP_QR_SCAN_LEFT;
+    s_qr_gimbal_angle = 0.0f;
+    s_qr_scan_step_start_tick = 0U;
+    s_qr_scan_step_deadline = 0U;
+    s_route_c_start_node_idx = 11U;
+    s_c_tof_cal_started = false;
+    s_c_tof_stable_frames = 0U;
+    s_c_tof_last_seq = 0U;
+    s_c_tof_start_tick = 0U;
+    s_c_tof_last_frame_tick = 0U;
+    s_b_cal_state = APP_B_CAL_ROTATE_Y_START;
+    s_b_tof_cal_started = false;
+    s_b_tof_stable_frames = 0U;
+    s_b_tof_last_seq = 0U;
+    s_b_tof_start_tick = 0U;
+    s_b_tof_last_frame_tick = 0U;
+    App_VisionCameraSearchReset();
 }
 
 /**
@@ -160,8 +278,130 @@ void App_SetMode(AppMode_t mode)
 {
     if (mode == APP_MODE_SCAN_C) {
         s_qr_scan_started = false;
+        s_qr_scan_phase = APP_QR_SCAN_LEFT;
+        s_qr_gimbal_angle = 0.0f;
+        s_qr_scan_step_start_tick = 0U;
+        s_qr_scan_step_deadline = 0U;
+    }
+    if (mode == APP_MODE_CALIBRATE_C) {
+        s_c_tof_cal_started = false;
+        s_c_tof_stable_frames = 0U;
+    }
+    if (mode == APP_MODE_CALIBRATE_B) {
+        s_b_cal_state = APP_B_CAL_ROTATE_Y_START;
+        s_b_tof_cal_started = false;
+        s_b_tof_stable_frames = 0U;
+    }
+    if (mode != APP_MODE_ROUTE_A && mode != APP_MODE_ROUTE_C) {
+        App_VisionCameraSearchReset();
     }
     g_app_mode = mode;
+}
+
+static void App_VisionCameraSearchReset(void)
+{
+    s_vision_camera_search_active = false;
+    s_vision_send_tick = 0U;
+    s_vision_send_rx_count = 0U;
+}
+
+static void App_SendVisionTask(void)
+{
+    s_grab_done = false;
+    UpperCP_SendTask("send");
+
+    if (g_app_mode == APP_MODE_ROUTE_A || g_app_mode == APP_MODE_ROUTE_C) {
+        s_vision_camera_search_active = true;
+        s_vision_send_tick = HAL_GetTick();
+        s_vision_send_rx_count = UpperCP_GetRxCount();
+    } else {
+        App_VisionCameraSearchReset();
+    }
+}
+
+static void App_VisionCameraSearchTick(void)
+{
+    static const float search_angles[] = {20.0f, 30.0f, 50.0f, 60.0f};
+    uint32_t now;
+    uint32_t elapsed;
+    uint32_t phase;
+
+    if (!s_vision_camera_search_active) {
+        return;
+    }
+
+    if (UpperCP_GetRxCount() != s_vision_send_rx_count) {
+        s_vision_camera_search_active = false;
+        return;
+    }
+
+    now = HAL_GetTick();
+    if ((int32_t)(now - (s_vision_send_tick + APP_VISION_NO_RX_SEARCH_DELAY_MS)) < 0) {
+        return;
+    }
+
+    elapsed = now - s_vision_send_tick - APP_VISION_NO_RX_SEARCH_DELAY_MS;
+    phase = (elapsed / APP_VISION_CAMERA_SEARCH_DWELL_MS) %
+            (sizeof(search_angles) / sizeof(search_angles[0]));
+    (void)PCA9685_Set270Angle(search_angles[phase]);
+}
+
+static void App_QrScanSweepTick(void)
+{
+    uint32_t now = HAL_GetTick();
+
+    if ((int32_t)(now - s_qr_scan_step_deadline) < 0) {
+        uint32_t elapsed = now - s_qr_scan_step_start_tick;
+
+        if (elapsed < APP_QR_SCAN_ANGLE_DWELL_MS) {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+        } else if (elapsed < (APP_QR_SCAN_ANGLE_DWELL_MS * 2U)) {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_MIDDLE_DEG);
+        } else {
+            (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_END_DEG);
+        }
+        return;
+    }
+
+    s_qr_scan_step_start_tick = now;
+    s_qr_scan_step_deadline = now + APP_QR_SCAN_STEP_MS;
+    (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+
+    switch (s_qr_scan_phase) {
+    case APP_QR_SCAN_LEFT:
+        s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle <= APP_QR_GIMBAL_LEFT_DEG) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_LEFT_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_LEFT;
+        }
+        break;
+
+    case APP_QR_SCAN_CENTER_FROM_LEFT:
+        s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle >= 0.0f) {
+            s_qr_gimbal_angle = 0.0f;
+            s_qr_scan_phase = APP_QR_SCAN_RIGHT;
+        }
+        break;
+
+    case APP_QR_SCAN_RIGHT:
+        s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle >= APP_QR_GIMBAL_RIGHT_DEG) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_RIGHT_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_RIGHT;
+        }
+        break;
+
+    default:
+        s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
+        if (s_qr_gimbal_angle <= 0.0f) {
+            s_qr_gimbal_angle = 0.0f;
+            s_qr_scan_phase = APP_QR_SCAN_LEFT;
+        }
+        break;
+    }
+
+    (void)PCA9685_Set180Angle(7U, s_qr_gimbal_angle);
 }
 
 /**
@@ -196,7 +436,8 @@ void vofaRxbyte(uint8_t data)
         /* 保留原测试入口：下一次 Task07 Tick 将云台置为测试角度后回到空闲。 */
         s_app_running = 1;
         s_stop_requested = 0;
-        App_SetMode(APP_MODE_TEST);
+        // App_SetMode(APP_MODE_TEST);
+         App_SetMode(APP_MODE_SCAN_C);
     }
 }
 /**
@@ -225,8 +466,16 @@ void App_RunCurrentMode(void)
         case APP_MODE_TEST:
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
         // Chassis_SetSpeed(0.0f,0.6f);
-      
-         ActionScheduler_StartGimbalMove(90.0f, 1000U);
+        //  vTaskDelay(pdMS_TO_TICKS(2000U));
+       Chassis_SetSpeed(0.0f,0.9f);
+        //  ActionScheduler_StartGimbalMove(90.0f, 1000U);
+        // Move_down(5.0f);
+        // ZhuaZi_open();
+        // Move_Pos(27.0f);
+        vTaskDelay(pdMS_TO_TICKS(5000U));
+               Chassis_SetSpeed(0.0f,0.0f);
+        //   Move_Pos(2.0f);
+        //   ZhuaZi_close();
            App_SetMode(APP_MODE_IDLE);
             break;
 
@@ -237,48 +486,106 @@ void App_RunCurrentMode(void)
 
         case APP_MODE_ROUTE_A:
             /* 语音提示只在 A 路线刚启动时调用一次；后续 Tick 转入路线状态机。 */
+            Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
             Voice_Num(17);
             App_StartRoute(k_route_a, APP_ROUTE_LEN(k_route_a), APP_MODE_SCAN_C);
             break;
 
         case APP_MODE_ROUTE_B:
-            /* Route B is intentionally retained as a no-op placeholder. */
+            /*
+             * C 区结束后先沿 Y 轴回到底部，再横移到 B 区入口 (-950, 0)。
+             * 第 2 个航点保持 +90°，不在路线中提前转到 0°；到点后再由独立校准
+             * 状
+             * 态机按“0° 校 Y、-90° 校 X”的顺序执行，避免测距期间与路线转向交叉。
+             */
+            s_dynamic_route[0] = (AppWaypoint_t){g_robot_pos.x, 0.0f, PI / 2.0f,
+                                                  false, APP_ACTION_NONE, 0U, 0U};
+            s_dynamic_route[1] = (AppWaypoint_t){-950.0f, 0.0f, PI / 2.0f,
+                                                  false, APP_ACTION_NONE, 0U, 0U};
+            s_dynamic_route[2] = (AppWaypoint_t){-950.0f, 2300.0f, PI,
+                                                  false, APP_ACTION_NONE, 0U, 0U};
+            App_StartRoute(s_dynamic_route, 2U, APP_MODE_CALIBRATE_B);
+            break;
+
+        case APP_MODE_CALIBRATE_B:
+            /* 每次任务 Tick 只推进一步；两轴都校准成功后才继续 B 区剩余路线。 */
+            App_RouteB_TofCalibrationTick();
+            break;
+
+        case APP_MODE_SCAN_B:
+            /* 预留：以后在此发送扫码请求并等待完成信号，最长 8 秒。 */
+            App_StartRoute(k_route_b, APP_ROUTE_LEN(k_route_b), APP_MODE_BACK);
             break;
 
         case APP_MODE_SCAN_C:
             if (!s_qr_scan_started) {
                 UpperCP_ResetQrResult();
-                PCA9685_Set270Angle(60.0f); /* 二维码相机初始转向 60° 位置 */
+                PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG); /* 二维码相机从扫码起始俯仰角开始慢速扫动 */
+                PCA9685_Set180Angle(7U, 0.0f); /* 扫码前水平云台回中，避免沿用上一次偏角 */
+                s_qr_scan_phase = APP_QR_SCAN_LEFT;
+                s_qr_gimbal_angle = 0.0f;
+                s_qr_scan_step_start_tick = HAL_GetTick();
+                s_qr_scan_step_deadline = s_qr_scan_step_start_tick + APP_QR_SCAN_STEP_MS;
                 UpperCP_SendTask("scan");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_TIMEOUT_MS;
                 s_qr_scan_started = true;
-                PCA9685_Set270AngleSmooth(50.0f, 100U, 20U); /* 270度舵机从 60° 匀速平滑转动到 50°，辅助相机扫描二维码 */
                 break;
             }
 
-            if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
-                ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
-                  PCA9685_Set270Angle(30.0f);
-                App_SetMode(APP_MODE_ROUTE_C);
+            if ((CameraFlag != 0U) && (fruits_count == 8U)) {
+                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
+                PCA9685_Set180Angle(7U, 0.0f);
+                App_SetMode(APP_MODE_ROUTE_C_ENTRY);
+            } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
+                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
+                PCA9685_Set180Angle(7U, 0.0f);
+                App_SetMode(APP_MODE_ROUTE_C_ENTRY);
+                // App_SetMode(APP_MODE_IDLE);
+            } else {
+                App_QrScanSweepTick();//扫码逻辑
             }
+            break;
+
+        case APP_MODE_ROUTE_C_ENTRY:
+            /*
+             * 二维码播报结束后先选择 C 区入口：节点 0 为左下入口，节点 11 为右下入口。
+             * 入口航点来自 k_route_c，因此到点后导航会把车头调整到 0°，使车尾 TOF 正对底部挡板。
+             * 此航点不绑定抓取动作；到点后切换到独立的 TOF 校准模式。
+             */
+            s_route_c_start_node_idx = App_RouteC_SelectEntryNode(fruits[0]);
+            s_dynamic_route[0] = k_route_c[s_route_c_start_node_idx];
+            s_dynamic_route[0].has_action = false;
+            s_dynamic_route[0].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[0].positive_position = 0U;
+            s_dynamic_route[0].negative_position = 0U;
+            App_StartRoute(s_dynamic_route, 1U, APP_MODE_CALIBRATE_C);
+            break;
+
+        case APP_MODE_CALIBRATE_C:
+            /* 非阻塞推进 TOF 校准；成功后进入 ROUTE_C，失败则停车回到 IDLE。 */
+            App_RouteC_TofCalibrationTick();
             break;
 
         case APP_MODE_ROUTE_C:
             /* 扫码完成或超时后，使用当前 fruits 数组启动 C 区规划。 */
-            App_RouteC_PlanAndRun(fruits, APP_MODE_BACK);
+            App_RouteC_PlanAndRun(fruits, APP_MODE_CALIBRATE_B);
             break;
         case APP_MODE_BACK:
             /* 两步返回原点(0,0)：先Y轴归零，再X轴归零，避免斜线碰撞风险 */
             s_dynamic_route[0].x_mm = g_robot_pos.x;
-            s_dynamic_route[0].y_mm = 10.0f;
+            s_dynamic_route[0].y_mm = 0.0f;
             s_dynamic_route[0].yaw_rad = PI / 2.0f;    /* 拐角点姿态设为+X方向(+90°)，到点只需顺势旋转90°指引直行 */
             s_dynamic_route[0].has_action = false;
             s_dynamic_route[0].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[0].positive_position = 0U;
+            s_dynamic_route[0].negative_position = 0U;
             s_dynamic_route[1].x_mm = 0.0f;
             s_dynamic_route[1].y_mm = 0.0f;
             s_dynamic_route[1].yaw_rad = PI / 2.0f;    /* 到达起点原点后保持+X方向，不再恢复初始朝向 */
             s_dynamic_route[1].has_action = false;
             s_dynamic_route[1].action_mask = APP_ACTION_NONE;
+            s_dynamic_route[1].positive_position = 0U;
+            s_dynamic_route[1].negative_position = 0U;
             App_StartRoute(s_dynamic_route, 2, APP_MODE_IDLE);
             break;
 
@@ -306,7 +613,8 @@ static void App_StartRoute(const AppWaypoint_t *route, uint8_t route_len,
     s_route_index = 0U;
     s_route_next_mode = next_mode;
     s_route_state = APP_ROUTE_WAIT_NAVIGATION;
-    (void)Navigation_Request(s_route[0].x_mm, s_route[0].y_mm, s_route[0].yaw_rad);
+    (void)Navigation_Request(s_route[0].x_mm, s_route[0].y_mm, s_route[0].yaw_rad,
+                             App_CurrentMoveHeadingBiasRad());
 }
 
 static void App_RouteTick(void)
@@ -321,6 +629,16 @@ static void App_RouteTick(void)
     if (s_route_state == APP_ROUTE_WAIT_NAVIGATION) {
         /* 底盘未到点时本函数立即返回，导航任务仍以 10ms 独立运行。 */
         if (!Navigation_IsIdle()) {
+            return;
+        }
+        if (g_app_mode == APP_MODE_ROUTE_C &&
+            !s_route_pour_sent &&
+            s_route[s_route_index].x_mm == -2615.0f &&
+            s_route[s_route_index].y_mm == 2300.0f) {
+            UpperCP_SendTask("pour");
+            s_route_pour_sent = true;
+            s_route_state = APP_ROUTE_WAIT_POUR;
+            App_RouteSetDelay(APP_ROUTE_POUR_DELAY_MS);
             return;
         }
         if (!s_route[s_route_index].has_action ||
@@ -338,9 +656,14 @@ static void App_RouteTick(void)
                 s_route_state = APP_ROUTE_FIRST_WAIT_LIFT;
                 App_RouteSetDelay(0U);
             }
-            // App_LogLiftTxStatus();
             return;
         }
+    } else if (s_route_state == APP_ROUTE_WAIT_POUR) {
+        if (!App_RouteDelayExpired()) {
+            return;
+        }
+        s_route_index++;
+        s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     } else if (s_route_state == APP_ROUTE_FIRST_WAIT_LIFT) {
         /* 
          * 前置拦截（Guard Clause）检查：
@@ -366,6 +689,12 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
+        if (g_app_mode == APP_MODE_SCAN_B) {
+            /* B 区抓取树上果子：云台到位后保持当前高度，直接请求视觉抓取。 */
+            App_SendVisionTask();
+            s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
+            return;
+        }
         Move_Pos(2.0f);
         s_route_state = APP_ROUTE_FIRST_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
@@ -374,14 +703,15 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成正向云台视野内的果实处理 */
+        App_SendVisionTask();
         s_route_state = APP_ROUTE_WAIT_GRAB_FIRST;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_FIRST) {
          if (!s_grab_done) {
+            App_VisionCameraSearchTick();
             return;
         }
+        App_VisionCameraSearchReset();
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
@@ -409,6 +739,12 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
+        if (g_app_mode == APP_MODE_SCAN_B) {
+            /* B 区反向视野同样不降低升降台，直接识别并抓取。 */
+            App_SendVisionTask();
+            s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
+            return;
+        }
         Move_Pos(2.0f);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
@@ -417,30 +753,28 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired()) {
             return;
         }
-        s_grab_done = false;
-        UpperCP_SendTask("send"); /* 请求相机完成反向云台视野内的果实处理 */
+        App_SendVisionTask();
         s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
         return;
     } else if (s_route_state == APP_ROUTE_WAIT_GRAB_SECOND) {
         if (!s_grab_done) {
+            App_VisionCameraSearchTick();
             return;
         }
+        App_VisionCameraSearchReset();
         s_route_index++;
         s_route_state = APP_ROUTE_WAIT_NAVIGATION;
     }
 
     if (s_route_index < s_route_len) {
-        /* 在 A 区向 (0,0) 起点倒车(索引为 4)及前往 (-2600, 10) 航点(索引为 5)时开启自动倒车；其他航点保持关闭正向前进 */
-        if (s_route == k_route_a && (s_route_index == 4U || s_route_index == 5U)) {
-            g_enable_auto_reverse = true;
-        } else {
-            g_enable_auto_reverse = false;
-        }
+        /* 自动倒车全局开关已打开：所有航点均允许自动倒车 */
+        g_enable_auto_reverse = true;
 
         /* 本航点已完成，向导航任务请求下一航点；到点结果由下一轮 Tick 检查。 */
         (void)Navigation_Request(s_route[s_route_index].x_mm,
                                  s_route[s_route_index].y_mm,
-                                 s_route[s_route_index].yaw_rad);
+                                 s_route[s_route_index].yaw_rad,
+                                 App_CurrentMoveHeadingBiasRad());
         return;
     }
 
@@ -461,80 +795,352 @@ void App_NotifyGrabDone(void)
 }
 
 /**
- * @brief  向 K230/上位机发送一次视觉处理请求
- */
-static void App_SendVisionTask(void)
-{
-    /* 请求 K230/上位机处理当前云台视野内的果实，并回传 arm:0~6。 */
-    UpperCP_SendTask("send");
-}
-
-/**
- * @brief  C区环形拓扑多目标点最短路径规划与导航执行函数
+ * @brief  按二维码下发顺序规划并执行 C 区环形路线
  * @details C区 12 个节点的环形轨道拓扑结构示意图：
  * 
- *               (y = 2350)
- *      [6] <------------------ [5]
+ *               (y = 2300)
+ *      [5] <------------------ [6]
  *       |                       |
- *      [7]                     [4]
+ *      [4]                     [7]
  *       |                       |
- *      [8]                     [3]
+ *      [3]                     [8]
  *       |                       |
- *      [9]                     [2]
+ *      [2]                     [9]
  *       |                       |
- *     [10]                     [1]
+ *     [1]                     [10]
  *       |                       |
- *      [11] -----------------> [0]
+ *      [0] -----------------> [11]
  *               (y = 0)
- *   (x = -2600)             (x = -1900)
+ *   (x = -1900)             (x = -2605)
  * 
  *          算法原理：
  *          1. C区拥有 12 个离散顶点 (0~11)，闭合成一个矩形环形轨道赛道。
- *          2. 把二维码位置 1~12 映射为环路节点和 +90/-90 度云台动作位。
- *          3. 评估顺时针 (Clockwise) 与逆时针 (Counter-Clockwise) 覆盖全部目标的实际毫米路程。
- *          4. 自动选取总路程较短的绕行方向；路程相同时选择顺时针。
- *          5. 沿途生成航点队列，同一底盘停车点的两侧动作合并到 action_mask。
- *          6. 启动非阻塞航线调度器完成多目标任务。
+ *          2. 依次把二维码位置 1~12 映射为环路节点和云台动作位，不重排、不合并。
+ *          3. 位置 5~8 位于中间列，可从左右两条通道作业，按当前位置选择更近的停靠侧。
+ *          4. 每两个相邻目标之间比较顺/逆时针实际毫米路程，选择较短的一段环路。
+ *          5. 保留目标点和防斜切拐角，启动非阻塞航线调度器完成多目标任务。
  * 
  * @param  fruit_positions 8 个水果位置编号数组，每项范围为 1 ~ 12
  * @param  next_mode      完成后跳转的下一个模式
  * @return 0 成功启动，-1 参数错误
  */
+static float App_RouteC_GetShortestRingDistance(uint8_t from_node, uint8_t to_node)
+{
+    uint8_t next;
+    float cw_distance = 0.0f;
+    float ccw_distance = 0.0f;
+
+    next = from_node;
+    while (next != to_node) {
+        uint8_t following = (uint8_t)((next + 1U) % 12U);
+        cw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                       fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+        next = following;
+    }
+
+    next = from_node;
+    while (next != to_node) {
+        uint8_t following = (next == 0U) ? 11U : (uint8_t)(next - 1U);
+        ccw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                        fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+        next = following;
+    }
+
+    return (cw_distance <= ccw_distance) ? cw_distance : ccw_distance;
+}
+
+/**
+ * @brief 根据二维码中的第一个作业位置选择 C 区左/右入口
+ * @details
+ * - 位置 1~4 只有左通道作业节点，通常选择节点 0；
+ * - 位置 9~12 只有右通道作业节点，通常选择节点 11；
+ * - 位置 5~8 可从两侧作业，分别计算两个入口到两侧候选节点的最短环路距离；
+ * - 两侧距离相同时选择右入口，减少扫码点附近的横向移动。
+ * @param first_position 二维码数组中的第一个水果位置，合法范围 1~12
+ * @return 0 表示左下入口，11 表示右下入口；非法位置安全回退到右入口
+ */
+static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position)
+{
+    uint8_t first_node;
+    float left_distance;
+    float right_distance;
+
+    if (first_position >= 1U && first_position <= 4U) {
+        first_node = (uint8_t)(5U - first_position);
+        left_distance = App_RouteC_GetShortestRingDistance(0U, first_node);
+        right_distance = App_RouteC_GetShortestRingDistance(11U, first_node);
+    } else if (first_position >= 5U && first_position <= 8U) {
+        /* 中间两列水果可由任一通道抓取，因此每个入口都要比较两个候选作业节点。 */
+        uint8_t left_lane_node = (uint8_t)(9U - first_position);
+        uint8_t right_lane_node = (uint8_t)(first_position + 2U);
+        float left_to_left = App_RouteC_GetShortestRingDistance(0U, left_lane_node);
+        float left_to_right = App_RouteC_GetShortestRingDistance(0U, right_lane_node);
+        float right_to_left = App_RouteC_GetShortestRingDistance(11U, left_lane_node);
+        float right_to_right = App_RouteC_GetShortestRingDistance(11U, right_lane_node);
+
+        left_distance = (left_to_left <= left_to_right) ? left_to_left : left_to_right;
+        right_distance = (right_to_left <= right_to_right) ? right_to_left : right_to_right;
+    } else if (first_position >= 9U && first_position <= 12U) {
+        first_node = (uint8_t)(first_position - 2U);
+        left_distance = App_RouteC_GetShortestRingDistance(0U, first_node);
+        right_distance = App_RouteC_GetShortestRingDistance(11U, first_node);
+    } else {
+        return 11U;
+    }
+
+    /* 距离相同时优先右入口，减少从 C 区扫码点横移的距离。 */
+    return (left_distance < right_distance) ? 0U : 11U;
+}
+
+/**
+ * @brief 使用车尾 TOF，按单个目标距离非阻塞调整底盘前后位置
+ * @param target_mm 车尾 TOF 到当前基准面的目标距离，单位：mm
+ * @details 首次调用只记录帧序号和超时起点，丢弃转向前的旧测距值。之后每个 Tick
+ * 只处理一帧新数据：距离过大时倒车靠近基准面，距离过小时前进远离。
+ * 连续两帧进入目标±10mm 才返回完成；断帧超过 300ms 先停车，单轴超过 10s 返回失败。
+ * @return APP_TOF_CAL_IN_PROGRESS 调整中；APP_TOF_CAL_DONE 稳定达标；
+ *         APP_TOF_CAL_FAILED 超时失败
+ */
+static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t frame_seq = TofFrameSeq;
+    float distance_mm;
+
+    if (!s_b_tof_cal_started) {
+        /* 此时车身刚停止转向：仅建立新帧基准，不用旧距离立即驱动底盘。 */
+        Navigation_Stop();
+        s_b_tof_last_seq = frame_seq;
+        s_b_tof_start_tick = now;
+        s_b_tof_last_frame_tick = now;
+        s_b_tof_stable_frames = 0U;
+        s_b_tof_cal_started = true;
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    if ((uint32_t)(now - s_b_tof_start_tick) >= APP_C_TOF_TIMEOUT_MS) {
+        Chassis_SetSpeed(0.0f, 0.0f);
+        return APP_TOF_CAL_FAILED;
+    }
+
+    if (frame_seq == s_b_tof_last_seq) {
+        /* 无新帧时不重复判定旧距离；若底盘原先在移动，断帧后必须停车。 */
+        if ((uint32_t)(now - s_b_tof_last_frame_tick) >= APP_C_TOF_FRAME_STALE_MS) {
+            Chassis_SetSpeed(0.0f, 0.0f);
+        }
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    distance_mm = TofData;
+    if (frame_seq != TofFrameSeq) {
+        /* 中断可能正在分别更新距离和帧序号，不使用前后不一致的快照。 */
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+    s_b_tof_last_seq = frame_seq;
+    s_b_tof_last_frame_tick = now;
+
+    if (distance_mm >= (target_mm - APP_C_TOF_TOLERANCE_MM) &&
+        distance_mm <= (target_mm + APP_C_TOF_TOLERANCE_MM)) {
+        /* 进入容差带后先停车，再累计稳定帧，防止惯性和单帧噪声造成误标定。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_b_tof_stable_frames++;
+        if (s_b_tof_stable_frames >= APP_C_TOF_STABLE_FRAMES) {
+            return APP_TOF_CAL_DONE;
+        }
+        return APP_TOF_CAL_IN_PROGRESS;
+    }
+
+    s_b_tof_stable_frames = 0U;
+    if (distance_mm > target_mm) {
+        /* TOF 位于车尾：距离过大时倒车靠近标定面。 */
+        Chassis_SetSpeed(-APP_B_TOF_SPEED_MM_S, 0.0f);
+    } else {
+        Chassis_SetSpeed(APP_B_TOF_SPEED_MM_S, 0.0f);
+    }
+    return APP_TOF_CAL_IN_PROGRESS;
+}
+
+/**
+ * @brief B 区入口双轴校准：0° 校准 Y，-90° 校准 X
+ * @details 入口航点到达时车头保持 +90°。本状态机先原地转到 0°，等待导航完全
+ * 结束后把车尾距离调到 200mm，仅将 Y 置 0；再原地转到 -90°，把车尾距离
+ * 调到 1250mm，仅将 X 置 -950。两次都成功后，才重新启动原路线的第 3 个航点。
+ * @note 航点朝向参数使用弧度；g_robot_pos.yaw 由导航层维护，单位为度。
+ */
+static void App_RouteB_TofCalibrationTick(void)
+{
+    AppTofCalibrationResult_t result;
+
+    switch (s_b_cal_state) {
+    case APP_B_CAL_ROTATE_Y_START:
+        /* 目标坐标取当前值，该请求只用于原地改变最终朝向。 */
+        if (Navigation_Request(g_robot_pos.x, g_robot_pos.y, 0.0f, 0.0f) == 0) {
+            s_b_cal_state = APP_B_CAL_WAIT_YAW_0;
+        }
+        break;
+
+    case APP_B_CAL_WAIT_YAW_0:
+        /* Navigation_IsIdle() 表示终点角度闭环已结束，此前不允许启动 TOF 直线调整。 */
+        if (Navigation_IsIdle()) {
+            s_b_tof_cal_started = false;
+            s_b_cal_state = APP_B_CAL_ADJUST_Y;
+        }
+        break;
+
+    case APP_B_CAL_ADJUST_Y:
+        result = App_RouteB_AdjustTof(APP_B_TOF_Y_TARGET_MM);
+        if (result == APP_TOF_CAL_DONE) {
+            /* 200mm 只对应 Y 轴外部基准，保留当前 X 和航向零偏。 */
+            Navigation_SetY(0.0f);
+            s_b_cal_state = APP_B_CAL_ROTATE_X_START;
+        } else if (result == APP_TOF_CAL_FAILED) {
+            s_app_running = false;
+            App_SetMode(APP_MODE_IDLE);
+        }
+        break;
+
+    case APP_B_CAL_ROTATE_X_START:
+        /* Y 已标定为 0；保持当前位置，原地转到 -90° 准备标定 X。 */
+        if (Navigation_Request(g_robot_pos.x, g_robot_pos.y, -PI / 2.0f, 0.0f) == 0) {
+            s_b_cal_state = APP_B_CAL_WAIT_YAW_NEG_90;
+        }
+        break;
+
+    case APP_B_CAL_WAIT_YAW_NEG_90:
+        /* 转向完成后重新建立 TOF 帧基准，避免沿用 0° 时的测距数据。 */
+        if (Navigation_IsIdle()) {
+            s_b_tof_cal_started = false;
+            s_b_cal_state = APP_B_CAL_ADJUST_X;
+        }
+        break;
+
+    default:
+        /* 默认分支即 APP_B_CAL_ADJUST_X：根据 1250mm 目标调整，只在稳定达标后写入 X。 */
+        result = App_RouteB_AdjustTof(APP_B_TOF_X_TARGET_MM);
+        if (result == APP_TOF_CAL_DONE) {
+            Navigation_SetX(-950.0f);
+            /* 恢复原动态路线的第 3 点 (-950, 2300, 180°)，到点后转入 B 区作业路线。 */
+            App_StartRoute(&s_dynamic_route[2], 1U, APP_MODE_SCAN_B);
+        } else if (result == APP_TOF_CAL_FAILED) {
+            s_app_running = false;
+            App_SetMode(APP_MODE_IDLE);
+        }
+        break;
+    }
+}
+
+/**
+ * @brief 在 C 区入口利用车尾 TOF 将底盘调整到距挡板 200mm，并把导航 Y 标定为 0
+ * @details 本函数由 15ms 应用任务周期调用，不包含阻塞等待：
+ * 1. 首次进入时停止导航并记录超时、新帧基准；
+ * 2. 只处理 TofFrameSeq 变化后的有效新数据，连续断帧时先停车；
+ * 3. 距离大于 210mm 时倒车靠近挡板，小于 190mm 时前进远离挡板；
+ * 4. 连续两帧落入 190~210mm 后停车，仅将 Y 设置为 0，再启动原 C 区作业路线；
+ * 5. 5s 内未完成则停车并中止路线，禁止使用未校准坐标继续运行。
+ */
+static void App_RouteC_TofCalibrationTick(void)
+{
+    uint32_t now = HAL_GetTick();
+    uint32_t frame_seq = TofFrameSeq;
+    float distance_mm;
+
+    if (!s_c_tof_cal_started) {
+        /* 丢弃进入状态前的旧测量值，必须等下一帧连续上报数据再开始移动。 */
+        Navigation_Stop();
+        s_c_tof_last_seq = frame_seq;
+        s_c_tof_start_tick = now;
+        s_c_tof_last_frame_tick = now;
+        s_c_tof_stable_frames = 0U;
+        s_c_tof_cal_started = true;
+        return;
+    }
+
+    if ((uint32_t)(now - s_c_tof_start_tick) >= APP_C_TOF_TIMEOUT_MS) {
+        /* 传感器异常或机械运动未到位时采取停车退出，不写入 Y=0。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_app_running = false;
+        App_SetMode(APP_MODE_IDLE);
+        return;
+    }
+
+    if (frame_seq == s_c_tof_last_seq) {
+        /* 没有新测量值时不得重复使用旧距离；运动中断帧超过阈值必须停车。 */
+        if ((uint32_t)(now - s_c_tof_last_frame_tick) >= APP_C_TOF_FRAME_STALE_MS) {
+            Chassis_SetSpeed(0.0f, 0.0f);
+        }
+        return;
+    }
+
+    distance_mm = TofData;
+    if (frame_seq != TofFrameSeq) {
+        /* 中断正在更新距离与帧序号，本周期不使用可能不一致的一组数据。 */
+        return;
+    }
+    s_c_tof_last_seq = frame_seq;
+    s_c_tof_last_frame_tick = now;
+
+    if (distance_mm >= (APP_C_TOF_TARGET_MM - APP_C_TOF_TOLERANCE_MM) &&
+        distance_mm <= (APP_C_TOF_TARGET_MM + APP_C_TOF_TOLERANCE_MM)) {
+        /* 达标帧先停车，再累计稳定次数，防止惯性和单帧噪声导致错误置零。 */
+        Chassis_SetSpeed(0.0f, 0.0f);
+        s_c_tof_stable_frames++;
+        if (s_c_tof_stable_frames >= APP_C_TOF_STABLE_FRAMES) {
+            Navigation_SetY(0.0f);
+            App_SetMode(APP_MODE_ROUTE_C);
+        }
+        return;
+    }
+
+    s_c_tof_stable_frames = 0U;
+    if (distance_mm > APP_C_TOF_TARGET_MM) {
+        /* TOF 位于车尾：距离过大时倒车靠近挡板。 */
+        Chassis_SetSpeed(-APP_C_TOF_SPEED_MM_S, 0.0f);
+    } else {
+        /* 距离过小时前进远离挡板。 */
+        Chassis_SetSpeed(APP_C_TOF_SPEED_MM_S, 0.0f);
+    }
+}
+
 int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
                               AppMode_t next_mode)
 {
-    const uint8_t start_node_idx = 11U;
     uint8_t i;
-    uint8_t step;
     uint8_t curr;
     uint8_t next;
     uint8_t node_idx;
-    uint8_t cw_steps = 0U;
-    uint8_t ccw_steps = 0U;
-    uint8_t best_steps;
     uint8_t out_len = 0U;
-    uint8_t target_actions[12] = {APP_ACTION_NONE};
-    float traveled;
-    float cw_distance = 0.0f;
-    float ccw_distance = 0.0f;
+    uint8_t action;
+    float cw_distance;
+    float ccw_distance;
     bool choose_cw;
-    AppWaypoint_t temp_route[12];
 
     if (fruit_positions == NULL) {
         return -1;
     }
 
-    /* 二维码位置映射为底盘停车节点，并合并同一点的左右云台动作。 */
+    /* 从刚完成 TOF 校准的实际入口开始规划，不能再固定假设从右入口节点 11 起步。 */
+    curr = s_route_c_start_node_idx;
+
+    /* 严格按二维码数组顺序逐个生成目标，不能按环路位置重新排序。 */
     for (i = 0U; i < 8U; i++) {
         uint8_t position = fruit_positions[i];
-        uint8_t action;
 
         if (position >= 1U && position <= 4U) {
             node_idx = (uint8_t)(5U - position);
-            action = APP_ACTION_POSITIVE;
-        } else if (position >= 5U && position <= 8U) {
-            node_idx = (uint8_t)(9U - position);
             action = APP_ACTION_NEGATIVE;
+        } else if (position >= 5U && position <= 8U) {
+            uint8_t right_lane_node = (uint8_t)(9U - position);  /* 右通道 0~5 的左侧作业点 */
+            uint8_t left_lane_node = (uint8_t)(position + 2U);   /* 左通道 6~11 的右侧作业点 */
+            float right_lane_dist = App_RouteC_GetShortestRingDistance(curr, right_lane_node);
+            float left_lane_dist = App_RouteC_GetShortestRingDistance(curr, left_lane_node);
+
+            if (left_lane_dist < right_lane_dist) {
+                node_idx = left_lane_node;
+                action = APP_ACTION_NEGATIVE;
+            } else {
+                node_idx = right_lane_node;
+                action = APP_ACTION_POSITIVE;
+            }
         } else if (position >= 9U && position <= 12U) {
             node_idx = (uint8_t)(position - 2U);
             action = APP_ACTION_POSITIVE;
@@ -542,75 +1148,59 @@ int32_t App_RouteC_PlanAndRun(const uint8_t *fruit_positions,
             return -1;
         }
 
-        target_actions[node_idx] |= action;
-    }
-
-    /* 顺时针累计相邻节点的实际毫米距离，并记录覆盖最后一个目标时的路程。 */
-    curr = start_node_idx;
-    traveled = 0.0f;
-    for (step = 1U; step <= 12U; step++) {
-        next = (uint8_t)((curr + 1U) % 12U);
-        traveled += fabsf(k_route_c[next].x_mm - k_route_c[curr].x_mm) +
-                    fabsf(k_route_c[next].y_mm - k_route_c[curr].y_mm);
-        curr = next;
-        if (target_actions[curr] != APP_ACTION_NONE) {
-            cw_steps = step;
-            cw_distance = traveled;
-        }
-    }
-
-    /* 逆时针执行相同计算，不能用节点个数代替实际路程。 */
-    curr = start_node_idx;
-    traveled = 0.0f;
-    for (step = 1U; step <= 12U; step++) {
-        next = (curr == 0U) ? 11U : (uint8_t)(curr - 1U);
-        traveled += fabsf(k_route_c[next].x_mm - k_route_c[curr].x_mm) +
-                    fabsf(k_route_c[next].y_mm - k_route_c[curr].y_mm);
-        curr = next;
-        if (target_actions[curr] != APP_ACTION_NONE) {
-            ccw_steps = step;
-            ccw_distance = traveled;
-        }
-    }
-
-    if (cw_steps == 0U || ccw_steps == 0U) {
-        return -1;
-    }
-
-    choose_cw = (cw_distance <= ccw_distance);
-    best_steps = choose_cw ? cw_steps : ccw_steps;
-    curr = start_node_idx;
-
-    /* 提取选定方向上的基础节点，并附加该停车点所需的云台方向。 */
-    for (i = 0U; i < best_steps; i++) {
-        if (choose_cw) {
-            curr = (uint8_t)((curr + 1U) % 12U);
-        } else {
-            curr = (curr == 0U) ? 11U : (uint8_t)(curr - 1U);
+        cw_distance = 0.0f;
+        next = curr;
+        while (next != node_idx) {
+            uint8_t following = (uint8_t)((next + 1U) % 12U);
+            cw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                           fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+            next = following;
         }
 
-        temp_route[i] = k_route_c[curr];
-        temp_route[i].action_mask = target_actions[curr];
-        temp_route[i].has_action = (target_actions[curr] != APP_ACTION_NONE);
-    }
-
-    /* 剔除直线无动作点；目标、终点和四个防斜切拐角必须保留。 */
-    for (i = 0U; i < best_steps; i++) {
-        if (choose_cw) {
-            node_idx = (uint8_t)((start_node_idx + i + 1U) % 12U);
-        } else {
-            node_idx = (uint8_t)((start_node_idx + 12U - ((i + 1U) % 12U)) % 12U);
+        ccw_distance = 0.0f;
+        next = curr;
+        while (next != node_idx) {
+            uint8_t following = (next == 0U) ? 11U : (uint8_t)(next - 1U);
+            ccw_distance += fabsf(k_route_c[following].x_mm - k_route_c[next].x_mm) +
+                            fabsf(k_route_c[following].y_mm - k_route_c[next].y_mm);
+            next = following;
         }
 
-        if (temp_route[i].has_action || (i == best_steps - 1U) ||
-            node_idx == 0U || node_idx == 5U || node_idx == 6U || node_idx == 11U) {
-            if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
-                return -1;
+        choose_cw = (cw_distance <= ccw_distance);
+        while (curr != node_idx) {
+            next = choose_cw ? (uint8_t)((curr + 1U) % 12U)
+                             : ((curr == 0U) ? 11U : (uint8_t)(curr - 1U));
+            curr = next;
+
+            /* 中途只保留矩形拐角；目标点在循环后单独加入并绑定本次动作。 */
+            if (curr != node_idx &&
+                (curr == 0U || curr == 5U || curr == 6U || curr == 11U)) {
+                if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
+                    return -1;
+                }
+                s_dynamic_route[out_len] = k_route_c[curr];
+                s_dynamic_route[out_len].has_action = false;
+                s_dynamic_route[out_len].action_mask = APP_ACTION_NONE;
+                s_dynamic_route[out_len].positive_position = 0U;
+                s_dynamic_route[out_len].negative_position = 0U;
+                out_len++;
             }
-            s_dynamic_route[out_len++] = temp_route[i];
         }
+
+        if (out_len >= APP_ROUTE_LEN(s_dynamic_route)) {
+            return -1;
+        }
+        s_dynamic_route[out_len] = k_route_c[node_idx];
+        s_dynamic_route[out_len].has_action = true;
+        s_dynamic_route[out_len].action_mask = action;
+        s_dynamic_route[out_len].positive_position =
+            (action == APP_ACTION_POSITIVE) ? position : 0U;
+        s_dynamic_route[out_len].negative_position =
+            (action == APP_ACTION_NEGATIVE) ? position : 0U;
+        out_len++;
     }
 
+    s_route_pour_sent = false;
     App_StartRoute(s_dynamic_route, out_len, next_mode);
 
     return 0;

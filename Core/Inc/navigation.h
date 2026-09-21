@@ -70,6 +70,8 @@ extern float nav_yaw_zero_deg;                  /**< 零点偏差 */
 extern int TarAngle;
 extern float TarPos;
 extern float v[2];                              /**< 左右轮计算出的实际控制速度，单位：mm/s */
+extern volatile float g_nav_move_err_rad;       /**< 直线阶段当前航向误差，单位：rad */
+extern volatile float g_nav_move_angular_rad_s; /**< 直线阶段实际限幅后纠偏角速度，单位：rad/s */
 
 /* 导航 API 声明 */
 
@@ -85,6 +87,18 @@ float Navigation_NormalizeDeg(float angle);
  * @param yaw_zero_deg 起始参考零偏角度
  */
 void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg);
+
+/**
+ * @brief 仅校准导航 Y 坐标，不改变 X 坐标和当前航向
+ * @param y_mm 新的 Y 坐标，单位：mm
+ */
+void Navigation_SetY(float y_mm);
+
+/**
+ * @brief 仅校准导航 X 坐标，不改变 Y 坐标和当前航向
+ * @param x_mm 新的 X 坐标，单位：mm
+ */
+void Navigation_SetX(float x_mm);
 
 /**
  * @brief 根据轮式里程计测得的单步位移量和陀螺仪测得的偏航角，更新导航位置
@@ -103,9 +117,11 @@ void Navigation_TaskTick(void);
  * @param target_x_mm 目标 X 坐标 (mm)
  * @param target_y_mm 目标 Y 坐标 (mm)
  * @param target_yaw_rad 目标最终朝向角 (弧度)
+ * @param move_heading_bias_rad 当前路段直线行进航向补偿 (弧度)
  * @return 0 成功启动导航请求，-1 当前导航正忙
  */
-int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad);
+int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad,
+                          float move_heading_bias_rad);
 
 /**
  * @brief 检查导航模块是否处于空闲状态
@@ -135,4 +151,3 @@ void Chassis_ClearClogProtection(void);
 float Navigation_GetYawDeg(void);
 
 #endif
-

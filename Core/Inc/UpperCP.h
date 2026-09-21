@@ -10,7 +10,6 @@ extern uint8_t fruits_count;
 extern uint8_t CameraFlag;
 
 extern float angle_dif1;         /**< 旋转角度微调步进增量全局变量 */
-extern uint8_t upordownFlag;     /**< 上下抓取目标状态标志位 (0：抓地上，1：抓树上) */
 
 void UpperCP_RX(void);
 void UpperCP_UartRxByte(uint8_t data);

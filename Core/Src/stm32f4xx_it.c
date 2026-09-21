@@ -253,20 +253,6 @@ void DMA1_Stream6_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles EXTI line[9:5] interrupts.
-  */
-void EXTI9_5_IRQHandler(void)
-{
-  /* USER CODE BEGIN EXTI9_5_IRQn 0 */
-
-  /* USER CODE END EXTI9_5_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(key1_Pin);
-  /* USER CODE BEGIN EXTI9_5_IRQn 1 */
-
-  /* USER CODE END EXTI9_5_IRQn 1 */
-}
-
-/**
   * @brief This function handles USART1 global interrupt.
   */
 void USART1_IRQHandler(void)
@@ -433,7 +419,7 @@ void USART6_IRQHandler(void)
   if (__HAL_UART_GET_FLAG(&huart6, UART_FLAG_RXNE) != RESET)
   {
     uint8_t data = (uint8_t)(huart6.Instance->DR & 0xFF);
-    vofaRxbyte(data);
+    TOF200F_FrontUartRxByte(data);
     return;
   }
 

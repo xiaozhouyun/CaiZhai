@@ -11,7 +11,7 @@
 /* 旋转对齐控制 PID 及前馈参数（起点与终点旋转参数严格保持一致） */
 static float align_kp = 3.0f;
 static float align_ki = 0.0f;
-static float align_kd = 0.0f;
+static float align_kd = 0.01f;
 static float target_yaw = 0.0f;  /**< 旋转对齐目标朝向角度 (rad) */
 
 /** 
@@ -26,17 +26,16 @@ TiancanPid_t anglepid = {
     .target = &target_yaw
 };
 
-#define ALIGN_FF_BASE             0.6f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
+#define ALIGN_FF_BASE             0.1f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
 #define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
-#define ALIGN_MIN_ANGULAR         0.6f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
-#define ALIGN_ERR_THRESH          0.025f         /**< 旋转对齐精度阈值 (rad)，约 2.86 度 */
-
+#define ALIGN_MIN_ANGULAR         0.1f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
+#define ALIGN_ERR_THRESH          0.015f       
 /* 直线行进控制参数 */
-#define MOVE_LINEAR_SPEED         300.0f        /**< 直线行进最大期望线速度 (mm/s) */
+#define MOVE_LINEAR_SPEED         300.0f        
 #define MOVE_LINEAR_RAMP          15.0f         /**< 线速度斜坡步长：每个控制周期最大增量 (mm/s)，用于软启动 */
-static float move_kp = 3.5f;                    /**< 提高航向纠偏响应敏捷度，小角度偏差即刻修正 */
+static float move_kp = 4.0f;                    /**< 加强直线行驶时的小角度航向纠偏 */
 static float move_ki = 0.0f;
-static float move_kd = 0.2f;
+static float move_kd = 0.01f;                
 static float move_target = 0.0f;  /**< 直线行进航偏纠偏目标朝向 (rad) */
 
 /** 
@@ -51,16 +50,18 @@ TiancanPid_t movepid = {
     .target = &move_target
 };
 
-#define MOVE_ARRIVE_DIST          15.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
-#define MOVE_MIN_LINEAR           20.0f         /**< 减速时最小保证线速度 (mm/s) */
-#define MOVE_MIN_SPEED            30.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
-#define MOVE_MAX_ANGULAR          0.6f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
+#define MOVE_ARRIVE_DIST          20.0f        /**< 目标点判定范围半径 (mm)，35mm 判定到达，放宽到达死区防止卡点 */
+#define MOVE_MIN_LINEAR           40.0f         /**< 减速时最小保证线速度 (mm/s) */
+#define MOVE_MIN_SPEED            40.0f         /**< 最终线速度最小限制 (mm/s)，平滑减速低速到位 */
+#define MOVE_MAX_ANGULAR          1.2f          /**< 直线纠偏中最大角速度限制 (rad/s)，压制速差防轮胎打滑甩尾 */
 #define MOVE_FF_BASE              30.0f         /**< 直线行进静摩擦力前馈 (mm/s)，适度前馈突破静摩擦 */
+#define MOVE_LATERAL_K            0.001f        /**< 直线横向偏差补偿系数：每偏 1mm 修正 0.001rad 目标航向 */
+#define MOVE_LATERAL_MAX_CORR     0.12f         /**< 直线横向偏差最大航向修正量 (rad)，约 6.9 度 */
 
 /* 到达最终角度调整控制参数 */
 static float arrived_kp = 3.0f;
 static float arrived_ki = 0.0f;
-static float arrived_kd = 0.0f;
+static float arrived_kd = 0.01f;
 static float arrived_target = 0.0f;  /**< 终点角度调整目标朝向 (rad) */
 
 /** 
@@ -76,10 +77,13 @@ TiancanPid_t arrivedpid = {
 };
 
 #define ARRIVED_SETTLE_MS         800U          /**< 到达后停稳等待时间 (ms)，让机身惯性消除后再转圈 */
-#define ARRIVED_MAX_ANGULAR       1.2f          /**< 终点最大角速度限制 (rad/s)，降低防轮胎打滑 */
-#define ARRIVED_MIN_ANGULAR       0.6f          /**< 终点最小角速度限制 (rad/s)，防止转速过低电机不转 */
-#define ARRIVED_FF_BASE           0.6f         /**< 终点旋转静摩擦前馈 (rad/s)，突破起步死区 */
-#define ARRIVED_ERR_THRESH        0.025f         /**< 最终角度对齐允许最大误差 (rad)，约 2.86 度，防止死锁死等 */
+#define ARRIVED_FAST_ERR_THRESH   0.25f         /**< 终点调角大误差阈值 (rad)，大于约 14.3 度时快速转向 */
+#define ARRIVED_SLOW_ERR_THRESH   0.06f         /**< 终点调角小误差阈值 (rad)，小于约 3.4 度时低速接近 */
+#define ARRIVED_CROSS_CAPTURE     0.10f         /**< 终点调角过零捕获阈值 (rad)，小角度跨过目标即认为到位 */
+#define ARRIVED_FAST_ANGULAR      0.9f          /**< 终点调角大误差固定角速度 (rad/s) */
+#define ARRIVED_MID_ANGULAR       0.6f         /**< 终点调角中误差固定角速度 (rad/s) */
+#define ARRIVED_SLOW_ANGULAR      0.2f         /**< 终点调角近目标固定角速度 (rad/s) */
+#define ARRIVED_ERR_THRESH        0.015f        /**< 最终角度对齐允许最大误差 (rad)，约 0.86 度 */
 
 /* 状态机全局变量 */
 Navigation_State_t navigation_state = NAVIGATION_STATE_IDLE;
@@ -90,11 +94,16 @@ float nav_yaw_zero_deg=0.0f;
 int TarAngle;
 float TarPos = 360.0f;
 float v[2];                                                     /**< 左右轮线速度，单位：mm/s */
+volatile float g_nav_move_err_rad;                              /**< VOFA 直线纠偏诊断：航向误差 */
+volatile float g_nav_move_angular_rad_s;                        /**< VOFA 直线纠偏诊断：限幅后角速度 */
 
 static position_t target;                                       /* 当前的导航目标位姿 */
 static position_t start;                                        /* 启动本次导航时的机器人位姿 */
+
+
+static float s_move_heading_bias_rad;                            /* 当前路段直线行进航向补偿，单位：rad */
 static bool s_is_reverse_mode = false;                           /* 当前离散导航周期的实际倒车模式标志 */
-volatile bool g_enable_auto_reverse = false;                     /* 自动倒车使能全局开关：默认关闭(false)，强行转动车头正向行驶 */
+volatile bool g_enable_auto_reverse = true;                      /* 自动倒车使能全局开关：默认打开(true)，允许偏差大时直接倒车行驶 */
 
 /* 静态控制函数声明 */
 static void Navigation_HandleIdle(void);
@@ -151,6 +160,24 @@ void Navigation_Reset(float start_x_mm, float start_y_mm, float yaw_zero_deg)
 }
 
 /**
+ * @brief 使用外部基准重新标定 Y 坐标
+ * @note  仅修改 Y；TOF 校准完成后仍保留当前 X、航向零偏和导航状态。
+ */
+void Navigation_SetY(float y_mm)
+{
+    g_robot_pos.y = y_mm;
+}
+
+/**
+ * @brief 使用外部基准重新标定 X 坐标
+ * @note  仅修改 X；TOF 校准完成后仍保留当前 Y、航向零偏和导航状态。
+ */
+void Navigation_SetX(float x_mm)
+{
+    g_robot_pos.x = x_mm;
+}
+
+/**
  * @brief 根据位移差更新机器人二维坐标
  * @note  由于机器人在大地坐标系下的航向偏角定义，采用 sin(yaw) 更新 x，cos(yaw) 更新 y
  */
@@ -198,7 +225,8 @@ void Navigation_TaskTick(void)
 /**
  * @brief 发送导航任务请求
  */
-int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad)
+int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw_rad,
+                          float move_heading_bias_rad)
 {
     /* 如果当前正在执行其他导航任务，直接拒绝 */
     if (navigation_state != NAVIGATION_STATE_IDLE) {
@@ -209,6 +237,9 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     target.y = target_y_mm;
     target.yaw = target_yaw_rad;
     start = g_robot_pos;
+    s_move_heading_bias_rad = move_heading_bias_rad;
+    g_nav_move_err_rad = 0.0f;
+    g_nav_move_angular_rad_s = 0.0f;
 
     /* 1. 计算从起始点指向目标点的绝对方位角 */
     float heading_angle = atan2f(target.x - start.x, target.y - start.y);
@@ -216,7 +247,7 @@ int8_t Navigation_Request(float target_x_mm, float target_y_mm, float target_yaw
     /* 2. 计算如果按正常前进，车头需要旋转的角度偏差 */
     float fwd_err = Navigation_NormalizeRad(heading_angle - g_robot_pos.yaw * NAV_PI / 180.0f);
 
-    /* 3. 自动倒车判定：若全局使能 g_enable_auto_reverse == true 且偏差 > 120° 才会倒车；默认 false 强制转动车头 180° 正向行驶 */
+    /* 3. 自动倒车判定：若全局使能 g_enable_auto_reverse == true 且偏差 > 120° 才会倒车；关闭时强制转动车头 180° 正向行驶 */
     if (g_enable_auto_reverse && fabsf(fwd_err) > 2.094f) {
         s_is_reverse_mode = true;
     } else {
@@ -242,6 +273,8 @@ bool Navigation_IsIdle(void)
 void Navigation_Stop(void)
 {
     navigation_state = NAVIGATION_STATE_IDLE;
+    g_nav_move_err_rad = 0.0f;
+    g_nav_move_angular_rad_s = 0.0f;
     Chassis_SetSpeed(0.0f, 0.0f);
 }
 
@@ -269,14 +302,16 @@ static void Navigation_HandleTargetAlign(void)
 
     /* 首次进入该状态时，计算两点之间的绝对方位角作为期望旋转朝向 */
     if (last_state != NAVIGATION_STATE_TARGET_ALIGN) {
-        Chassis_ClearClogProtection(); /* 刚进入转弯对齐状态，自动清除电机堵转锁死保护 */
+        // Chassis_ClearClogProtection(); /* 刚进入转弯对齐状态，自动清除电机堵转锁死保护 */
         float heading_angle = atan2f(target.x - start.x, target.y - start.y);
         if (s_is_reverse_mode) {
             /* 倒车模式：车尾正对目标点 */
-            *anglepid.target = Navigation_NormalizeRad(heading_angle + NAV_PI);
+            *anglepid.target = Navigation_NormalizeRad(heading_angle + NAV_PI +
+                                                       s_move_heading_bias_rad);
         } else {
             /* 前进模式：车头正对目标点 */
-            *anglepid.target = heading_angle;
+            *anglepid.target = Navigation_NormalizeRad(heading_angle +
+                                                       s_move_heading_bias_rad);
         }
         last_err = 0.0f;
         last_time = xTaskGetTickCount();
@@ -299,12 +334,6 @@ static void Navigation_HandleTargetAlign(void)
         dt = 0.01f;
     }
 
-    /* 旋转过程中定期（每 500ms）自动清除堵转保护，防止转弯中途卡住 */
-    static TickType_t last_align_clog_clear = 0;
-    if ((now - last_align_clog_clear) >= pdMS_TO_TICKS(500U)) {
-        Chassis_ClearClogProtection();
-        last_align_clog_clear = now;
-    }
 
     /* PD闭环反馈控制旋转（使用 anglepid 全局变量中的 PID 参数） */
     angular_speed = -((*anglepid.kp) * err + (*anglepid.kd) * (err - last_err) / dt);
@@ -354,11 +383,16 @@ static void Navigation_HandleMoving(void)
     float angular_speed;
     float target_linear_speed;
     float angular_ratio;
+    float heading_angle;
+    float lateral_err;
+    float lateral_corr;
     TickType_t now;
 
     /* 到达目标点判定半径内，说明行进完成，进入终点角度微调状态 */
     if (distance < MOVE_ARRIVE_DIST) {
         navigation_state = NAVIGATION_STATE_ARRIVED;
+        g_nav_move_err_rad = 0.0f;
+        g_nav_move_angular_rad_s = 0.0f;
         Chassis_SetSpeed(0.0f, 0.0f);
         current_linear_speed = 0.0f;
         last_state = NAVIGATION_STATE_IDLE;
@@ -372,10 +406,21 @@ static void Navigation_HandleMoving(void)
     }
     last_state = NAVIGATION_STATE_MOVING;
 
-    /* 纠偏误差：根据当前位置和目标点连线的方位角，对比当前机器人的朝向角度 */
-    float heading_angle = atan2f(dx, dy);
+    /* 纠偏误差：先固定使用起点到终点的方位角，再叠加横向偏差补偿把车拉回原直线。 */
+    heading_angle = atan2f(target.x - start.x, target.y - start.y);
+    lateral_err = sinf(heading_angle) * (g_robot_pos.y - start.y) -
+                  cosf(heading_angle) * (g_robot_pos.x - start.x);
+    lateral_corr = lateral_err * MOVE_LATERAL_K;
+    if (lateral_corr > MOVE_LATERAL_MAX_CORR) {
+        lateral_corr = MOVE_LATERAL_MAX_CORR;
+    } else if (lateral_corr < -MOVE_LATERAL_MAX_CORR) {
+        lateral_corr = -MOVE_LATERAL_MAX_CORR;
+    }
+    heading_angle = Navigation_NormalizeRad(heading_angle + lateral_corr +
+                                            s_move_heading_bias_rad);
     *movepid.target = s_is_reverse_mode ? Navigation_NormalizeRad(heading_angle + NAV_PI) : heading_angle;
     err = Navigation_NormalizeRad(*movepid.target - g_robot_pos.yaw * NAV_PI / 180.0f);
+    g_nav_move_err_rad = err;
 
     now = xTaskGetTickCount();
     dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
@@ -391,14 +436,10 @@ static void Navigation_HandleMoving(void)
     } else if (angular_speed < -MOVE_MAX_ANGULAR) {
         angular_speed = -MOVE_MAX_ANGULAR;
     }
+    g_nav_move_angular_rad_s = angular_speed;
 
-    /* 到达终点前 80mm 抑制纠偏角速度：让左右轮保持完全相同的速度直行停车，消除两轮速差引起的甩尾打滑与角度偏斜 */
-    if (distance < 80.0f) {
-        angular_speed = 0.0f;
-    }
-
-    /* 临近终点减速逻辑，距离小于 350mm 时提前平滑减速，防止冲过头 */
-    #define MOVE_DECEL_DIST 350.0f
+    /* 临近终点减速逻辑，距离小于 400mm 时提前平滑减速，防止冲过头 */
+    #define MOVE_DECEL_DIST 400.0f
     if (distance < MOVE_DECEL_DIST) {
         target_linear_speed = MOVE_LINEAR_SPEED * (distance / MOVE_DECEL_DIST);
         if (target_linear_speed < MOVE_MIN_LINEAR) {
@@ -454,29 +495,23 @@ static void Navigation_HandleArrived(void)
 {
     static Navigation_State_t last_state = NAVIGATION_STATE_IDLE;
     static float last_err;
-    static TickType_t last_time;
     static TickType_t settle_start;  /**< 进入停稳阶段的时刻 */
     bool settling;                   /**< 当前是否处于停稳等待中 */
     float err;
-    float dt;
     float angular_speed;
-    TickType_t now;
 
     /* 首次进入 ARRIVED → 记录停稳起始时刻 */
     if (last_state != NAVIGATION_STATE_ARRIVED) {
-        Chassis_ClearClogProtection(); /* 刚进入终点角度调整，自动清除堵转状态 */
+        // Chassis_ClearClogProtection(); /* 刚进入终点角度调整，自动清除堵转状态 */
         settle_start = xTaskGetTickCount();
         last_state = NAVIGATION_STATE_ARRIVED;
         last_err = 0.0f;
-        last_time = settle_start;
     }
 
     /* 1. 优先停稳等待阶段：先保持零速，等待惯性彻底消除让车子完全停稳 */
     settling = ((xTaskGetTickCount() - settle_start) < pdMS_TO_TICKS(ARRIVED_SETTLE_MS));
     if (settling) {
         Chassis_SetSpeed(0.0f, 0.0f);
-        /* 停稳期间持续刷新 last_time，避免后续转圈阶段 dt 异常放大 */
-        last_time = xTaskGetTickCount();
         return;
     }
 
@@ -492,46 +527,24 @@ static void Navigation_HandleArrived(void)
     }
 
     /* --- 以下为转圈调角度阶段 --- */
-
-    now = xTaskGetTickCount();
-    dt = (float)(now - last_time) / (float)configTICK_RATE_HZ;
-    if (dt <= 0.0f || dt > 0.1f) {
-        dt = 0.01f;
+    if ((last_err * err < 0.0f) && (fabsf(err) < ARRIVED_CROSS_CAPTURE)) {
+        Navigation_Stop();
+        last_state = NAVIGATION_STATE_IDLE;
+        return;
     }
 
-    /* 旋转过程中定期（每 500ms）自动清除堵转保护 */
-    static TickType_t last_arrived_clog_clear = 0;
-    if ((now - last_arrived_clog_clear) >= pdMS_TO_TICKS(500U)) {
-        Chassis_ClearClogProtection();
-        last_arrived_clog_clear = now;
+    if (fabsf(err) > ARRIVED_FAST_ERR_THRESH) {
+        angular_speed = ARRIVED_FAST_ANGULAR;
+    } else if (fabsf(err) > ARRIVED_SLOW_ERR_THRESH) {
+        angular_speed = ARRIVED_MID_ANGULAR;
+    } else {
+        angular_speed = ARRIVED_SLOW_ANGULAR;
     }
 
-    /* PD计算旋转调整的角速度（使用 arrivedpid 全局变量中的 PID 参数） */
-    angular_speed = -((*arrivedpid.kp) * err + (*arrivedpid.kd) * (err - last_err) / dt);
-
-    /* 静摩擦前馈：与 TargetAlign 同理，误差比例缩放，突破起步死区 */
-    {
-        float ff_ratio = fabsf(err) / (float)PI;
-        if (ff_ratio > 1.0f) ff_ratio = 1.0f;
-        angular_speed -= (err > 0.0f) ? (ARRIVED_FF_BASE * ff_ratio) : -(ARRIVED_FF_BASE * ff_ratio);
-    }
-
-    if (angular_speed > ARRIVED_MAX_ANGULAR) {
-        angular_speed = ARRIVED_MAX_ANGULAR;
-    } else if (angular_speed < -ARRIVED_MAX_ANGULAR) {
-        angular_speed = -ARRIVED_MAX_ANGULAR;
-    }
-
-    /* 最小角速度限制：低于阈值的非零输出上提到 ±MIN，防止电机堵转或单边不转 */
-    if (angular_speed > 0.0f && angular_speed < ARRIVED_MIN_ANGULAR) {
-        angular_speed = ARRIVED_MIN_ANGULAR;
-    } else if (angular_speed < 0.0f && angular_speed > -ARRIVED_MIN_ANGULAR) {
-        angular_speed = -ARRIVED_MIN_ANGULAR;
-    }
+    angular_speed = (err > 0.0f) ? -angular_speed : angular_speed;
 
     Chassis_SetSpeed(0.0f, angular_speed);
     last_err = err;
-    last_time = now;
 }
 
 /**
@@ -570,6 +583,10 @@ void Chassis_SetSpeed(float linear_vel_mm_s, float angular_vel_rad_s)
 
     /* 加速度 acc 设为 100，适中刹车力度，既无迟滞拖拽，又不会硬锁死导致轮胎打滑甩尾 */
     uint8_t acc = 250U;
+
+    if (fabsf(linear_vel_mm_s) < 1.0f && fabsf(angular_vel_rad_s) > 0.01f) {
+    acc = 80U;   /* 原地旋转降低加速度，减小冲击和噪音 */
+    }
 
     /* 控制下发：低速死区过滤后发送，同时下发并设置同步标志 */
     Emm_V5_Vel_Control(left_head, left_dir, send_left_rpm, acc, true);
