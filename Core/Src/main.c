@@ -131,18 +131,18 @@ int main(void)
               (unsigned long)UpperCP_GetUartErrorCount());
 
   /* ================= 1. 舵机驱动初始化 (PCA9685) ================= */
-//  if (PCA9685_Init() != 0)
-//  {
-//    Error_Handler(); /* 舵机驱动芯片初始化失败，进入异常处理 */
-//  }
-//  PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
-//  HAL_Delay(100U);           /* 延时 100ms 确保舵机转动到初始零位 */
+ if (PCA9685_Init() != 0)
+ {
+   Error_Handler(); /* 舵机驱动芯片初始化失败，进入异常处理 */
+ }
+ PCA9685_ResetAllToZero();  /* 上电归零：ch0=270°舵机 / ch1~15=180°舵机 */
+ HAL_Delay(100U);           /* 延时 100ms 确保舵机转动到初始零位 */
 
-//  /* ================= 2. 显示屏与传感器初始化 ================= */
-//  if (OLED_Init() != OLED_OK)
-//  {
-//    g_system_error = 1U;
-//  }
+ /* ================= 2. 显示屏与传感器初始化 ================= */
+ if (OLED_Init() != OLED_OK)
+ {
+   g_system_error = 1U;
+ }
   TOF200F_Init();            /* 初始化后置 USART1/地址1 与前置 USART6/地址2 TOF200F 接收 */
 
   /* ================= 3. 姿态传感器初始化 (HWT101) ================= */
