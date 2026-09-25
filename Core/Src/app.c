@@ -26,6 +26,7 @@
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
+#define APP_QR_SCAN_B_TIMEOUT_MS     30000U  /* B 区覆盖 +90~+70 度搜索所需的最长等待时间 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* send 后无上位机消息时，延时后启动摄像头搜索 */
 #define APP_VISION_CAMERA_SEARCH_DWELL_MS 2000U /* 摄像头搜索每个固定角度停留时间 */
@@ -34,6 +35,8 @@
 #define APP_QR_CAMERA_SCAN_END_DEG    80.0f  /* 二维码相机第三档俯仰角 */
 #define APP_QR_GIMBAL_LEFT_DEG       -20.0f  /* 二维码搜索左侧最大角度 */
 #define APP_QR_GIMBAL_RIGHT_DEG       20.0f  /* 二维码搜索右侧最大角度 */
+#define APP_QR_GIMBAL_B_MIN_DEG       70.0f  /* B 区二维码搜索的水平云台下限 */
+#define APP_QR_GIMBAL_B_MAX_DEG       90.0f  /* B 区二维码搜索的水平云台上限 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
 #define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
@@ -45,7 +48,7 @@
 #define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
 #define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
-#define APP_B_TOF_X_TARGET_MM        2000.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
+#define APP_B_TOF_X_TARGET_MM        1000.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
@@ -185,9 +188,9 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(-2600.0f, 0.0f, PI/2, false),
 };
 
-/* B 区沿同一竖直通道向下，左右错位果树按单侧云台动作依次处理。 */
+/* B 区首点用于扫码，后续点沿同一竖直通道向下依次抓取。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_SIDE(-950.0f, 2150.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_NO_ACT(-950.0f, 2150.0f, PI),
     WAYPOINT_SIDE(-950.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
     WAYPOINT_SIDE(-950.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
     WAYPOINT_SIDE(-950.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
@@ -274,10 +277,10 @@ void App_Init(void)
  */
 void App_SetMode(AppMode_t mode)
 {
-    if (mode == APP_MODE_SCAN_C) {
+    if (mode == APP_MODE_SCAN_B || mode == APP_MODE_SCAN_C) {
         s_qr_scan_started = false;
         s_qr_scan_phase = APP_QR_SCAN_LEFT;
-        s_qr_gimbal_angle = 0.0f;
+        s_qr_gimbal_angle = (mode == APP_MODE_SCAN_B) ? APP_QR_GIMBAL_B_MAX_DEG : 0.0f;
         s_qr_scan_step_start_tick = 0U;
         s_qr_scan_step_deadline = 0U;
     }
@@ -364,6 +367,25 @@ static void App_QrScanSweepTick(void)
     s_qr_scan_step_start_tick = now;
     s_qr_scan_step_deadline = now + APP_QR_SCAN_STEP_MS;
     (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+
+    if (g_app_mode == APP_MODE_SCAN_B) {
+        /* B 区在右侧视野内往返搜索，不允许超过水平云台 +90 度机械上限。 */
+        if (s_qr_scan_phase == APP_QR_SCAN_LEFT) {
+            s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
+            if (s_qr_gimbal_angle <= APP_QR_GIMBAL_B_MIN_DEG) {
+                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MIN_DEG;
+                s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_LEFT;
+            }
+        } else {
+            s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
+            if (s_qr_gimbal_angle >= APP_QR_GIMBAL_B_MAX_DEG) {
+                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MAX_DEG;
+                s_qr_scan_phase = APP_QR_SCAN_LEFT;
+            }
+        }
+        (void)PCA9685_Set180Angle(7U, s_qr_gimbal_angle);
+        return;
+    }
 
     switch (s_qr_scan_phase) {
     case APP_QR_SCAN_LEFT:
@@ -465,13 +487,16 @@ void App_RunCurrentMode(void)
             /* 单次测试动作，不使用原先的平滑阻塞接口。 */
         // Chassis_SetSpeed(0.0f,0.6f);
         //  vTaskDelay(pdMS_TO_TICKS(2000U));
-       Chassis_SetSpeed(0.0f,0.9f);
-        //  ActionScheduler_StartGimbalMove(90.0f, 1000U);
+    //    Chassis_SetSpeed(0.0f,0.9f);
         // Move_down(5.0f);
         // ZhuaZi_open();
+           PCA9685_Set180Angle(6U,0);
+        osDelay(1000U);
+        PCA9685_Set180Angle(6U,-80);
+     
         // Move_Pos(27.0f);
-        vTaskDelay(pdMS_TO_TICKS(5000U));
-               Chassis_SetSpeed(0.0f,0.0f);
+        // vTaskDelay(pdMS_TO_TICKS(5000U));
+        //        Chassis_SetSpeed(0.0f,0.0f);
         //   Move_Pos(2.0f);
         //   ZhuaZi_close();
            App_SetMode(APP_MODE_IDLE);
@@ -498,8 +523,6 @@ void App_RunCurrentMode(void)
                                                   false, APP_ACTION_NONE, 0U, 0U};
             s_dynamic_route[1] = (AppWaypoint_t){-950.0f, 0.0f, PI / 2.0f,
                                                   false, APP_ACTION_NONE, 0U, 0U};
-            s_dynamic_route[2] = (AppWaypoint_t){-950.0f, 2300.0f, PI,
-                                                  false, APP_ACTION_NONE, 0U, 0U};
             App_StartRoute(s_dynamic_route, 2U, APP_MODE_CALIBRATE_B);
             break;
 
@@ -509,8 +532,36 @@ void App_RunCurrentMode(void)
             break;
 
         case APP_MODE_SCAN_B:
-            /* 预留：以后在此发送扫码请求并等待完成信号，最长 8 秒。 */
-            App_StartRoute(k_route_b, APP_ROUTE_LEN(k_route_b), APP_MODE_BACK);
+            if (!s_qr_scan_started) {
+                if (ActionScheduler_IsGimbalBusy()) {
+                    break;
+                }
+                if (fabsf(PCA9685_Get180Angle(7U) - APP_QR_GIMBAL_B_MAX_DEG) > 0.1f) {
+                    /* 先安全抬升并平滑转到 +90 度，到位后再开始扫码。 */
+                    ActionScheduler_StartGimbalMove(APP_QR_GIMBAL_B_MAX_DEG, 1000U);
+                    break;
+                }
+
+                UpperCP_ResetQrResult();
+                PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+                s_qr_scan_phase = APP_QR_SCAN_LEFT;
+                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MAX_DEG;
+                s_qr_scan_step_start_tick = HAL_GetTick();
+                s_qr_scan_step_deadline = s_qr_scan_step_start_tick + APP_QR_SCAN_STEP_MS;
+                UpperCP_SendTask("scan");
+                s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_B_TIMEOUT_MS;
+                s_qr_scan_started = true;
+                break;
+            }
+
+            if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
+                ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
+                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
+                /* 首点只用于扫码，抓取路线从第二个点开始。 */
+                App_StartRoute(&k_route_b[1], APP_ROUTE_LEN(k_route_b) - 1U, APP_MODE_BACK);
+            } else {
+                App_QrScanSweepTick();
+            }
             break;
 
         case APP_MODE_SCAN_C:
@@ -961,7 +1012,7 @@ static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm, bool use_
  * @brief B 区入口双轴校准：+90° 前 TOF 校 X，0° 后 TOF 校 Y
  * @details 到入口后先把前向距离调到暂定的 2000mm，仅将 X 置 -950；
  * 再原地转到 0°，等待转向结束后把后向距离调到 200mm，仅将 Y 置 0。
- * 两轴都成功后，继续前往 (-950, 2300)。前向目标距离需实测确认。
+ * 两轴都成功后，前往 B 区扫码点 (-950, 2150)。前向目标距离需实测确认。
  * @note 航点朝向参数使用弧度；g_robot_pos.yaw 由导航层维护，单位为度。
  */
 static void App_RouteB_TofCalibrationTick(void)
@@ -1000,7 +1051,7 @@ static void App_RouteB_TofCalibrationTick(void)
         if (result == APP_TOF_CAL_DONE) {
             /* 200mm 只对应 Y 轴外部基准，保留当前 X 和航向零偏。 */
             Navigation_SetY(0.0f);
-            App_StartRoute(&s_dynamic_route[2], 1U, APP_MODE_SCAN_B);
+            App_StartRoute(&k_route_b[0], 1U, APP_MODE_SCAN_B);
         } else if (result == APP_TOF_CAL_FAILED) {
             s_app_running = false;
             App_SetMode(APP_MODE_IDLE);

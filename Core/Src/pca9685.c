@@ -202,7 +202,7 @@ int32_t PCA9685_ResetAllToZero(void)
         /* 通道 6：伸缩机构，零位 = -50°（完全收缩） */
         if (i == 6U)
         {
-            zero_angle = -80.0f;
+            zero_angle = -70.0f;
         }
 
         PCA9685_Set180Angle(i, zero_angle);

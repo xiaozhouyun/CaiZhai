@@ -237,7 +237,11 @@ void StartDefaultTask(void *argument)
       vTaskDelay(pdMS_TO_TICKS(2000U));
    
   /* 初始化完成，任务自杀 */
-  vTaskDelete(NULL);
+  for(;;)
+  {
+     g_robot_pos.yaw = Get_zeroYaw();
+     vTaskDelay(pdMS_TO_TICKS(50));
+  }
   /* USER CODE END StartDefaultTask */
 }
 
@@ -299,7 +303,6 @@ void StartTask03(void *argument)
   /* Infinite loop */
   for(;;)
   {
-     g_robot_pos.yaw = Get_zeroYaw();
      Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(50));
   }

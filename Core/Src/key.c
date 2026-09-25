@@ -28,7 +28,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     
     if (GPIO_Pin == key2_Pin)
         {
-            /* Key2 按下处理 */
+                    s_app_running = true;
+                s_stop_requested = false;
+                App_SetMode(APP_MODE_TEST);
               
         }
         else if (GPIO_Pin == key3_Pin)
