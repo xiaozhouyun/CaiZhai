@@ -7,8 +7,8 @@
  * 
  * @note    引脚及中断映射关系：
  *          - Key1: key1_Pin (PB9), EXTI9_5_IRQn，下降沿触发
- *          - Key2: key2_Pin (PE0), EXTI0_IRQn，  下降沿触发
- *          - Key3: key3_Pin (PC2), EXTI2_IRQn，  下降沿触发
+ *          - Key2: key2_Pin (PC2), EXTI2_IRQn，下降沿触发
+ *          - Key3: key3_Pin (PE1), EXTI1_IRQn，下降沿触发
  *          任何按键按下触发 EXTI 中断时，均会首先翻转 user_led 灯 (PB2)。
  */
 
@@ -26,12 +26,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
         /* 针对不同按键的后续逻辑分支 */
     
-    if (GPIO_Pin == key2_Pin)
+        if (GPIO_Pin == key2_Pin)
         {
-                    s_app_running = true;
-                s_stop_requested = false;
-                App_SetMode(APP_MODE_TEST);
-              
+            static uint32_t last_key2_tick = 0U;
+            static bool key2_pressed = false;
+            uint32_t now_tick = HAL_GetTick();
+
+            /* 机械按键消抖，保证一次按下只执行一次 10° 增量。 */
+            if (key2_pressed && ((now_tick - last_key2_tick) < 200U))
+            {
+                return;
+            }
+            key2_pressed = true;
+            last_key2_tick = now_tick;
+            s_app_running = true;
+            s_stop_requested = false;
+            App_SetMode(APP_MODE_TEST);
         }
         else if (GPIO_Pin == key3_Pin)
         {

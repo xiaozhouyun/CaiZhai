@@ -12,6 +12,23 @@
 #define LIFT_ODOMETER_PAUSE_MS        20U
 #define LIFT_TX_IDLE_TIMEOUT_MS        5U
 #define LIFT_RX_GUARD_MS               1U
+#define ARM_EXTEND_CAL_POINT_COUNT     7U
+
+/*
+ * 实测伸缩标定（机构总长 -> 以 -70° 为零点的相对伸出量）：
+ * -70°: 250mm ->   0mm；-50°: 270mm ->  20mm；-30°: 310mm ->  60mm；
+ * -20°: 335mm ->  85mm；-10°: 350mm -> 100mm；  0°: 380mm -> 130mm；
+ * +10°: 400mm -> 150mm。+10° 是当前已实测的最大位置，不向更大角度外推。
+ *
+ * 六段实测斜率依次为 1.0、2.0、2.5、1.5、3.0、2.0 mm/°，不能使用统一比例。
+ * 相邻标定点之间使用分段线性插值，避免少量数据拟合高阶曲线后产生过冲。
+ */
+static const float s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT] = {
+    -70.0f, -50.0f, -30.0f, -20.0f, -10.0f, 0.0f, 10.0f
+};
+static const float s_arm_extend_distance_mm[ARM_EXTEND_CAL_POINT_COUNT] = {
+      0.0f,  20.0f,  60.0f,  85.0f, 100.0f, 130.0f, 150.0f
+};
 
 /* 当前升降位置，单位 cm；Move_up/Move_down/Move_Pos 会维护这个值。 */
 float volatile now_pos = 2.0f;
@@ -105,37 +122,67 @@ void Move_Pos(float Tar_pos)
     now_pos = Tar_pos;
 }
 
+/* 正向模型：舵机角度 θ -> 相对伸出量 x(mm)，超出实测范围时钳位到端点。 */
+static float Arm_ExtendDistanceMmForAngle(float angle_deg)
+{
+    uint8_t i;
+
+    if (angle_deg <= s_arm_extend_angle_deg[0]) {
+        return s_arm_extend_distance_mm[0];
+    }
+    if (angle_deg >= s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT - 1U]) {
+        return s_arm_extend_distance_mm[ARM_EXTEND_CAL_POINT_COUNT - 1U];
+    }
+
+    for (i = 0U; i < (ARM_EXTEND_CAL_POINT_COUNT - 1U); i++) {
+        if (angle_deg <= s_arm_extend_angle_deg[i + 1U]) {
+            /* x = x0 + (θ-θ0)/(θ1-θ0) * (x1-x0) */
+            float ratio = (angle_deg - s_arm_extend_angle_deg[i])
+                        / (s_arm_extend_angle_deg[i + 1U] - s_arm_extend_angle_deg[i]);
+            return s_arm_extend_distance_mm[i]
+                 + ratio * (s_arm_extend_distance_mm[i + 1U] - s_arm_extend_distance_mm[i]);
+        }
+    }
+
+    return s_arm_extend_distance_mm[ARM_EXTEND_CAL_POINT_COUNT - 1U];
+}
+
+/* 反向模型：目标伸出量 x(mm) -> 舵机角度 θ，供厘米控制和 TOF 抓取共同使用。 */
+static float Arm_ExtendAngleForDistanceMm(float distance_mm)
+{
+    uint8_t i;
+
+    if (distance_mm <= s_arm_extend_distance_mm[0]) {
+        return s_arm_extend_angle_deg[0];
+    }
+    if (distance_mm >= s_arm_extend_distance_mm[ARM_EXTEND_CAL_POINT_COUNT - 1U]) {
+        return s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT - 1U];
+    }
+
+    for (i = 0U; i < (ARM_EXTEND_CAL_POINT_COUNT - 1U); i++) {
+        if (distance_mm <= s_arm_extend_distance_mm[i + 1U]) {
+            /* θ = θ0 + (x-x0)/(x1-x0) * (θ1-θ0) */
+            float ratio = (distance_mm - s_arm_extend_distance_mm[i])
+                        / (s_arm_extend_distance_mm[i + 1U] - s_arm_extend_distance_mm[i]);
+            return s_arm_extend_angle_deg[i]
+                 + ratio * (s_arm_extend_angle_deg[i + 1U] - s_arm_extend_angle_deg[i]);
+        }
+    }
+
+    return s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT - 1U];
+}
+
 /**
-  * @brief  伸缩相对位移换算（待实测标定的线性近似）
+  * @brief  根据实测分段模型换算相对伸缩距离
   * @param  dist_cm 本次相对伸缩距离，单位 cm；正值伸出，负值缩回
   */
 float Arm_ExtendAngleForDeltaCm(float current_angle_deg, float dist_cm)
 {
-    float target_angle_deg;
+    /* 先由当前指令角度估算位置，再叠加相对位移，最后通过反向模型求目标角度。 */
+    float current_distance_mm = Arm_ExtendDistanceMmForAngle(current_angle_deg);
+    float target_distance_mm = current_distance_mm + dist_cm * 10.0f;
 
-    if (current_angle_deg < ARM_EXTEND_MIN_ANGLE_DEG)
-    {
-        current_angle_deg = ARM_EXTEND_MIN_ANGLE_DEG;
-    }
-    else if (current_angle_deg > ARM_EXTEND_MAX_ANGLE_DEG)
-    {
-        current_angle_deg = ARM_EXTEND_MAX_ANGLE_DEG;
-    }
-
-    /* 旧线性模型化简为角度增量；后续由连杆几何或实测数据替换。 */
-    target_angle_deg = current_angle_deg + dist_cm * 10.0f / ARM_EXTEND_MM_PER_DEG;
-
-    /* 收回不得越过实测零位。 */
-    if (target_angle_deg > ARM_EXTEND_MAX_ANGLE_DEG)
-    {
-        target_angle_deg = ARM_EXTEND_MAX_ANGLE_DEG;
-    }
-    else if (target_angle_deg < ARM_EXTEND_MIN_ANGLE_DEG)
-    {
-        target_angle_deg = ARM_EXTEND_MIN_ANGLE_DEG;
-    }
-
-    return target_angle_deg;
+    return Arm_ExtendAngleForDistanceMm(target_distance_mm);
 }
 
 void extend_cm(float dist_cm)

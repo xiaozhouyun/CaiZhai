@@ -203,7 +203,8 @@ int32_t PCA9685_ResetAllToZero(void)
         /* 通道 6：使用伸缩机构共用的实测收缩位置。 */
         if (i == 6U)
         {
-            zero_angle = ARM_EXTEND_MIN_ANGLE_DEG;
+             zero_angle = ARM_EXTEND_MIN_ANGLE_DEG;
+//             zero_angle = -50.0f;
         }
 
         PCA9685_Set180Angle(i, zero_angle);
@@ -217,7 +218,7 @@ int32_t PCA9685_ResetAllToZero(void)
  * @brief  平滑驱动指定通道 180° 舵机旋转至目标角度（插值平滑插帧控制）
  * @param  channel          舵机通道号 (0 ~ 15)
  *                          - 7U: 云台舵机 (-90° 至 +90°)
- *                          - 6U: 伸缩机构舵机 (-70° 至 +25°)
+ *                          - 6U: 伸缩机构舵机（当前实测范围 -70° 至 +10°）
  *                          - 5U: 机械爪夹紧舵机 (-30° 张开, 10° 闭合)
  * @param  target_angle_deg 目标角度（单位：度）
  * @param  steps            平滑细化步数（分割出的微小插值步骤总数，steps > 0）

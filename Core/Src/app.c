@@ -484,23 +484,18 @@ void App_RunCurrentMode(void)
 
     switch (g_app_mode) {
         case APP_MODE_TEST:
-            /* 单次测试动作，不使用原先的平滑阻塞接口。 */
-        // Chassis_SetSpeed(0.0f,0.6f);
-        //  vTaskDelay(pdMS_TO_TICKS(2000U));
-    //    Chassis_SetSpeed(0.0f,0.9f);
-        // Move_down(5.0f);
-        // ZhuaZi_open();
-           PCA9685_Set180Angle(6U,0);
-        osDelay(1000U);
-        PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
-     
-        // Move_Pos(27.0f);
-        // vTaskDelay(pdMS_TO_TICKS(5000U));
-        //        Chassis_SetSpeed(0.0f,0.0f);
-        //   Move_Pos(2.0f);
-        //   ZhuaZi_close();
-           App_SetMode(APP_MODE_IDLE);
+        {
+//            float target_angle = PCA9685_Get180Angle(6U) + 10.0f;
+
+//            /* Key2 每按一次伸出 10°，到达机械上限后保持在上限。 */
+//            if (target_angle > ARM_EXTEND_MAX_ANGLE_DEG) {
+//                target_angle = ARM_EXTEND_MAX_ANGLE_DEG;
+//            }
+            (void)PCA9685_Set180Angle(6U, -50.0f);
+            s_app_running = false;
+            App_SetMode(APP_MODE_IDLE);
             break;
+        }
 
         case APP_MODE_IDLE:
             /* Idle mode: ensure the robot is stopped and not executing any navigation tasks. */

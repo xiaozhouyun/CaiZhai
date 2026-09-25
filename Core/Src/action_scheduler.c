@@ -24,9 +24,10 @@
 
 /*
  * 伸缩限位和位移换算统一由 arms 模块提供。
- * TOF 随夹爪移动；8cm 为原抓取经验补偿，待实测标定。
+ * TOF 随夹爪移动；当前额外补偿为 0cm。
+ * 后续若加入安装偏移或抓取深度，只修改本参数，并用实物抓取数据重新标定。
  */
-#define ARM_EXTEND_TOF_OFFSET_CM      (8.0f)
+#define ARM_EXTEND_TOF_OFFSET_CM      (0.0f)
 
 /*
  * 机械动作反应时间（单位：ms）。

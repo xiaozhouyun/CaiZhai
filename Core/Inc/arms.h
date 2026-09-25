@@ -3,11 +3,9 @@
 
 #include "main.h"
 
-/* 伸缩通道共用限位：收缩位置已实测，最大角度沿用原设置。 */
+/* 伸缩通道当前实测范围：-70° 完全收回，+10° 对应相对伸出 150mm。 */
 #define ARM_EXTEND_MIN_ANGLE_DEG      (-70.0f)
-#define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
-/* 待标定：暂保留旧比例，不代表新角度范围仍对应 300mm。 */
-#define ARM_EXTEND_MM_PER_DEG         (300.0f / 105.0f)
+#define ARM_EXTEND_MAX_ANGLE_DEG      (10.0f)
 
 /**
  * @brief  机械臂升降机构控制模块头文件
@@ -42,7 +40,7 @@ void Move_Pos(float Tar_pos);
  */
 void extend_cm(float dist_cm);
 
-/* 根据指令角度和相对位移计算限位内的目标角度；暂用线性近似。 */
+/* 根据实测分段模型，将“当前伸出量 + 相对位移”反算为限位内的目标角度。 */
 float Arm_ExtendAngleForDeltaCm(float current_angle_deg, float dist_cm);
 
 /**
