@@ -9,10 +9,6 @@
 #include "vofa.h"
 #include "odometer_pause.h"
 
-#define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
-#define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
-#define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)  /* -80°→+25° 总行程 */
-#define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)  /* 对应最大伸出 30cm */
 #define LIFT_ODOMETER_PAUSE_MS        20U
 #define LIFT_TX_IDLE_TIMEOUT_MS        5U
 #define LIFT_RX_GUARD_MS               1U
@@ -110,39 +106,26 @@ void Move_Pos(float Tar_pos)
 }
 
 /**
-  * @brief  机械臂伸缩控制函数（线性映射：105° ↔ 300mm）
+  * @brief  伸缩相对位移换算（待实测标定的线性近似）
   * @param  dist_cm 本次相对伸缩距离，单位 cm；正值伸出，负值缩回
   */
-void extend_cm(float dist_cm)
+float Arm_ExtendAngleForDeltaCm(float current_angle_deg, float dist_cm)
 {
-    float current_angle_deg;
-    float current_dist_mm;
-    float target_dist_mm;
     float target_angle_deg;
 
-    /* 读取通道 6U 当前实际角度 */
-    current_angle_deg = PCA9685_Get180Angle(6U);
-
-    /* 当前角度 → 当前伸出距离: dist = (angle + 80) / 105 * 300 */
-    current_dist_mm = (current_angle_deg - ARM_EXTEND_MIN_ANGLE_DEG)
-                      / ARM_EXTEND_TOTAL_RANGE_DEG * ARM_EXTEND_TOTAL_RANGE_MM;
-    if (current_dist_mm < 0.0f)
+    if (current_angle_deg < ARM_EXTEND_MIN_ANGLE_DEG)
     {
-        current_dist_mm = 0.0f;
+        current_angle_deg = ARM_EXTEND_MIN_ANGLE_DEG;
+    }
+    else if (current_angle_deg > ARM_EXTEND_MAX_ANGLE_DEG)
+    {
+        current_angle_deg = ARM_EXTEND_MAX_ANGLE_DEG;
     }
 
-    /* 目标伸出距离 = 当前 + 增量(cm→mm) */
-    target_dist_mm = current_dist_mm + dist_cm * 10.0f;
-    if (target_dist_mm < 0.0f)
-    {
-        target_dist_mm = 0.0f;
-    }
+    /* 旧线性模型化简为角度增量；后续由连杆几何或实测数据替换。 */
+    target_angle_deg = current_angle_deg + dist_cm * 10.0f / ARM_EXTEND_MM_PER_DEG;
 
-    /* 目标距离 → 目标角度: angle = -80 + dist / 300 * 105 */
-    target_angle_deg = ARM_EXTEND_MIN_ANGLE_DEG
-                       + target_dist_mm / ARM_EXTEND_TOTAL_RANGE_MM * ARM_EXTEND_TOTAL_RANGE_DEG;
-
-    /* 限位钳位 [-80°, +25°] */
+    /* 收回不得越过实测零位。 */
     if (target_angle_deg > ARM_EXTEND_MAX_ANGLE_DEG)
     {
         target_angle_deg = ARM_EXTEND_MAX_ANGLE_DEG;
@@ -152,13 +135,20 @@ void extend_cm(float dist_cm)
         target_angle_deg = ARM_EXTEND_MIN_ANGLE_DEG;
     }
 
-    /* 驱动通道 6U 伸缩舵机平滑旋转 */
+    return target_angle_deg;
+}
+
+void extend_cm(float dist_cm)
+{
+    /* Get180Angle 返回指令记录，并非舵机实测反馈。 */
+    float target_angle_deg = Arm_ExtendAngleForDeltaCm(PCA9685_Get180Angle(6U), dist_cm);
+
     (void)PCA9685_Set180AngleSmooth(6U, target_angle_deg, 100U, 15U);
 }
 
 /**
-  * @brief  机械臂伸缩机构归零/复位到完全收缩位置 (-80°)
-  * @note   驱动通道 6U 伸缩舵机平滑旋转至 ARM_EXTEND_MIN_ANGLE_DEG (-80.0f)
+  * @brief  机械臂伸缩机构归零/复位到实测完全收缩位置 (-70°)
+  * @note   驱动通道 6U 伸缩舵机平滑旋转至共用收缩限位
   */
 void Arm_ExtendZero(void)
 {
@@ -197,7 +187,7 @@ void Arm_put(void)
      * 遗留同步接口：当前状态机不调用本函数。
      * 若被其他模块调用，也保持“先收臂 -> 升至10cm并等待 -> 再转云台”的顺序。
      */
-    PCA9685_Set180AngleSmooth(6U, -80.0f, 100U, 10U);
+    PCA9685_Set180AngleSmooth(6U, ARM_EXTEND_MIN_ANGLE_DEG, 100U, 10U);
     Move_Pos(10.0f);
     vTaskDelay(pdMS_TO_TICKS(3000U));
     ActionScheduler_StartGimbalMove(0.0f, 1000U);

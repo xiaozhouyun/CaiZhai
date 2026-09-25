@@ -18,7 +18,7 @@ bool ActionScheduler_IsGimbalBusy(void);
 void ActionScheduler_Cancel(void);
 /** @brief 查询是否有等待中的抓取、复位或坏果清理序列。 */
 bool ActionScheduler_IsBusy(void);
-/** @brief 直接设置伸缩臂到指定厘米距离（测试用）；不经过状态机。 */
+/** @brief 按 TOF 距离加安装补偿相对伸臂，单位 cm；仅下发目标，不等待到位。 */
 void ActionScheduler_SetExtendCm(float distance_cm);
 
 #endif

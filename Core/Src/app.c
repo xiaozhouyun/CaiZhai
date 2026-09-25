@@ -492,7 +492,7 @@ void App_RunCurrentMode(void)
         // ZhuaZi_open();
            PCA9685_Set180Angle(6U,0);
         osDelay(1000U);
-        PCA9685_Set180Angle(6U,-80);
+        PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
      
         // Move_Pos(27.0f);
         // vTaskDelay(pdMS_TO_TICKS(5000U));
