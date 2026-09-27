@@ -27,7 +27,7 @@ TiancanPid_t anglepid = {
 };
 
 #define ALIGN_FF_BASE             0.1f          /**< 旋转对齐静态摩擦前馈 (rad/s) */
-#define ALIGN_MAX_ANGULAR         1.2f          /**< 旋转对齐最大角速度 (rad/s) */
+#define ALIGN_MAX_ANGULAR         1.5f          /**< 旋转对齐最大角速度 (rad/s) */
 #define ALIGN_MIN_ANGULAR         0.1f          /**< 旋转对齐最小角速度限制 (rad/s)，与终点对齐一致 */
 #define ALIGN_ERR_THRESH          0.015f       
 /* 直线行进控制参数 */
@@ -80,9 +80,9 @@ TiancanPid_t arrivedpid = {
 #define ARRIVED_FAST_ERR_THRESH   0.25f         /**< 终点调角大误差阈值 (rad)，大于约 14.3 度时快速转向 */
 #define ARRIVED_SLOW_ERR_THRESH   0.06f         /**< 终点调角小误差阈值 (rad)，小于约 3.4 度时低速接近 */
 #define ARRIVED_CROSS_CAPTURE     0.10f         /**< 终点调角过零捕获阈值 (rad)，小角度跨过目标即认为到位 */
-#define ARRIVED_FAST_ANGULAR      0.9f          /**< 终点调角大误差固定角速度 (rad/s) */
-#define ARRIVED_MID_ANGULAR       0.6f         /**< 终点调角中误差固定角速度 (rad/s) */
-#define ARRIVED_SLOW_ANGULAR      0.2f         /**< 终点调角近目标固定角速度 (rad/s) */
+#define ARRIVED_FAST_ANGULAR      1.2f          /**< 终点调角大误差固定角速度 (rad/s) */
+#define ARRIVED_MID_ANGULAR       0.9f         /**< 终点调角中误差固定角速度 (rad/s) */
+#define ARRIVED_SLOW_ANGULAR      0.6f         /**< 终点调角近目标固定角速度 (rad/s) */
 #define ARRIVED_ERR_THRESH        0.015f        /**< 最终角度对齐允许最大误差 (rad)，约 0.86 度 */
 
 /* 状态机全局变量 */

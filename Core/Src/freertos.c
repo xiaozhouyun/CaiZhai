@@ -236,8 +236,11 @@ void StartDefaultTask(void *argument)
       Navigation_Stop();
       vTaskDelay(pdMS_TO_TICKS(2000U));
    
-  /* 初始化完成，任务自杀 */
-  vTaskDelete(NULL);
+  for(;;)
+  {
+     g_robot_pos.yaw = Get_zeroYaw();
+     vTaskDelay(pdMS_TO_TICKS(50));
+  }
   /* USER CODE END StartDefaultTask */
 }
 
@@ -261,19 +264,19 @@ void StartTask02(void *argument)
     if ((OLED_IsReady() != 0U) && ((HAL_GetTick() - oled_last_refresh) >= 500U))
     {
       oled_last_refresh = HAL_GetTick();
-      oled_print(0, 0, 16, "X=%.2f", g_robot_pos.x);
-      oled_print(0, 2, 16, "y=%.2f", g_robot_pos.y);
-      oled_print(0, 4, 16, "yaw=%.2f", g_robot_pos.yaw);
+      oled_print(0, 0, 16, "X=%.0f Y=%.0f", g_robot_pos.x, g_robot_pos.y);
+      oled_print(0, 2, 16, "yaw=%.2f", g_robot_pos.yaw);
+      oled_print(0, 4, 16, "Ftof=%.2f", FrontTofData / 10.0f);
       oled_print(0, 6, 16, "tof=%.2f", TofData / 10.0f );
       {
-        float vofa_data[5] = {
-          g_robot_pos.x,
-          g_robot_pos.y,
-          g_robot_pos.yaw,
-          (*anglepid.target) * 180.0f / 3.1415926f,
-          PCA9685_Get180Angle(6U)
-        };
-        Vofa_SendFirewater(vofa_data, 5);
+        // float vofa_data[5] = {
+        //   g_robot_pos.x,
+        //   g_robot_pos.y,
+        //   g_robot_pos.yaw,
+        //   (*anglepid.target) * 180.0f / 3.1415926f,
+        //   PCA9685_Get180Angle(6U)
+        // };
+        // Vofa_SendFirewater(vofa_data, 5);
       }
     }
     // Tiancan_Process();
@@ -299,7 +302,6 @@ void StartTask03(void *argument)
   /* Infinite loop */
   for(;;)
   {
-     g_robot_pos.yaw = Get_zeroYaw();
      Odometer_Update();
      vTaskDelay(pdMS_TO_TICKS(50));
   }

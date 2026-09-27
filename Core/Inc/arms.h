@@ -3,6 +3,10 @@
 
 #include "main.h"
 
+/* 伸缩通道当前实测范围：-70° 完全收回，+10° 对应相对伸出 150mm。 */
+#define ARM_EXTEND_MIN_ANGLE_DEG      (-70.0f)
+#define ARM_EXTEND_MAX_ANGLE_DEG      (10.0f)
+
 /**
  * @brief  机械臂升降机构控制模块头文件
  */
@@ -32,12 +36,15 @@ void Move_Pos(float Tar_pos);
 
 /**
  * @brief  机械臂伸缩控制函数
- * @param  dist_cm 机械臂伸缩距离，单位：cm
+ * @param  dist_cm 相对伸缩距离，单位 cm；正值伸出，负值缩回
  */
 void extend_cm(float dist_cm);
 
+/* 根据实测分段模型，将“当前伸出量 + 相对位移”反算为限位内的目标角度。 */
+float Arm_ExtendAngleForDeltaCm(float current_angle_deg, float dist_cm);
+
 /**
- * @brief  机械臂伸缩机构归零/复位到完全收缩位置 (-80°)
+ * @brief  机械臂伸缩机构归零/复位到实测完全收缩位置 (-70°)
  */
 void Arm_ExtendZero(void);
 

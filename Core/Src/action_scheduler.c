@@ -23,15 +23,11 @@
  */
 
 /*
- * 伸缩臂通道6的线性标定参数。
- * 当前约定：-80° 对应完全收回，+25° 对应最大伸出约 300mm。
- * ActionScheduler_SetExtendCm() 会把“再伸出多少 cm”换算成通道6目标角度。
+ * 伸缩限位和位移换算统一由 arms 模块提供。
+ * TOF 随夹爪移动；当前额外补偿为 0cm。
+ * 后续若加入安装偏移或抓取深度，只修改本参数，并用实物抓取数据重新标定。
  */
-#define ARM_EXTEND_MIN_ANGLE_DEG      (-80.0f)
-#define ARM_EXTEND_MAX_ANGLE_DEG      (25.0f)
-#define ARM_EXTEND_TOTAL_RANGE_DEG    (105.0f)
-#define ARM_EXTEND_TOTAL_RANGE_MM     (300.0f)
-#define ARM_EXTEND_TOF_OFFSET_CM      (8.0f)
+#define ARM_EXTEND_TOF_OFFSET_CM      (0.0f)
 
 /*
  * 机械动作反应时间（单位：ms）。
@@ -51,7 +47,7 @@
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
 #define ARM_GIMBAL_LIMIT_DEG          90.0f  /* 视觉水平对准时的云台机械限位 */
 #define ARM_GIMBAL_REVERSE_DEG        85.0f  /* 从侧向视野回转 10 度后改用底盘后退 */
-#define ARM_CHASSIS_ALIGN_STEP_MM     10.0f  /* 云台停止转动后，底盘单次对准距离 */
+#define ARM_CHASSIS_ALIGN_STEP_MM     15.0f  /* 云台停止转动后，底盘单次对准距离 */
 
 /*
  * 抓取动作状态机总体节奏：
@@ -262,30 +258,9 @@ static void ActionScheduler_SetDeadline(uint32_t delay_ms)
 
 void ActionScheduler_SetExtendCm(float distance_cm)
 {
-    /*
-     * 在“当前伸出量”的基础上再移动 ToF 距离，并统一补偿 7cm 机械误差。
-     * 注意这里不是设置绝对伸出长度，而是通过当前角度反推已伸出距离，再叠加目标增量。
-     */
-    float current = PCA9685_Get180Angle(6U);
-    float dist_mm = (current - ARM_EXTEND_MIN_ANGLE_DEG)
-                  / ARM_EXTEND_TOTAL_RANGE_DEG * ARM_EXTEND_TOTAL_RANGE_MM;
-    float target;
-
-    if (dist_mm < 0.0f) {
-        /* 读取值受初始化/浮点误差影响时，不能允许计算出负行程。 */
-        dist_mm = 0.0f;
-    }
-    target = ARM_EXTEND_MIN_ANGLE_DEG
-           + (dist_mm + (distance_cm + ARM_EXTEND_TOF_OFFSET_CM) * 10.0f)
-           / ARM_EXTEND_TOTAL_RANGE_MM
-           * ARM_EXTEND_TOTAL_RANGE_DEG;
-    if (target > ARM_EXTEND_MAX_ANGLE_DEG) {
-        /* 目标距离过远时卡在机械最大伸出角，保护机构。 */
-        target = ARM_EXTEND_MAX_ANGLE_DEG;
-    } else if (target < ARM_EXTEND_MIN_ANGLE_DEG) {
-        /* 目标距离为负或过小时卡在完全收回角。 */
-        target = ARM_EXTEND_MIN_ANGLE_DEG;
-    }
+    /* 暂保留原抓取逻辑：相对移动 TOF 距离 + 8cm，不是绝对伸出量。 */
+    float target = Arm_ExtendAngleForDeltaCm(PCA9685_Get180Angle(6U),
+                                            distance_cm + ARM_EXTEND_TOF_OFFSET_CM);
     /* 此处只下发一个目标角，不调用带 osDelay 的 Smooth 接口。 */
     (void)PCA9685_Set180Angle(6U, target);
 }
@@ -297,7 +272,7 @@ static void ActionScheduler_StartPut(ActionState_t first_state)
      * 收缩臂命令先下发，等待其完成后才允许升降台动作。
      * first_state 是正常果放置流程的“收臂后入口”。
      */
-    (void)PCA9685_Set180Angle(6U, -80.0f);
+    (void)PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
     s_state = first_state;
     ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
 }
@@ -305,7 +280,7 @@ static void ActionScheduler_StartPut(ActionState_t first_state)
 static void ActionScheduler_StartSkip(void)
 {
     /* 跳过目标也遵循“先收臂、再抬升、后转云台”的机械安全顺序。 */
-    (void)PCA9685_Set180Angle(6U, -80.0f);
+    (void)PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
     s_state = ACTION_SKIP_WAIT_EXTEND;
     ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
 }
