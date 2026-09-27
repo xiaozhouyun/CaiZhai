@@ -47,7 +47,7 @@
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
 #define ARM_GIMBAL_LIMIT_DEG          90.0f  /* 视觉水平对准时的云台机械限位 */
 #define ARM_GIMBAL_REVERSE_DEG        85.0f  /* 从侧向视野回转 10 度后改用底盘后退 */
-#define ARM_CHASSIS_ALIGN_STEP_MM     10.0f  /* 云台停止转动后，底盘单次对准距离 */
+#define ARM_CHASSIS_ALIGN_STEP_MM     15.0f  /* 云台停止转动后，底盘单次对准距离 */
 
 /*
  * 抓取动作状态机总体节奏：

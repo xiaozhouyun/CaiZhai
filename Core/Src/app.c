@@ -48,7 +48,7 @@
 #define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
 #define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
-#define APP_B_TOF_X_TARGET_MM        1000.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
+#define APP_B_TOF_X_TARGET_MM        1800.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
@@ -202,18 +202,18 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
-    WAYPOINT(-1965.0f, 270.0f, 0, 0),
-    WAYPOINT(-1965.0f, 760.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1260.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1770.0f, 0, 0),
-    WAYPOINT(-1965.0f, 2250.0f, 0, 0),//左拐点
-    WAYPOINT(-2615.0f, 2250.0f, 0, 0),//右拐点
-    WAYPOINT(-2615.0f, 1750.0f, 0, 0),
-    WAYPOINT(-2615.0f, 1250.0f, 0, 0),
-    WAYPOINT(-2615.0f, 760.0f, 0, 0),
-    WAYPOINT(-2615.0f, 270.0f, 0, 0),
-    WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
+    WAYPOINT(-1865.0f, 0.0f, 0, false),//左起点
+    WAYPOINT(-1865.0f, 270.0f, 0, 0),
+    WAYPOINT(-1865.0f, 760.0f, 0, 0),
+    WAYPOINT(-1865.0f, 1260.0f, 0, 0),
+    WAYPOINT(-1865.0f, 1770.0f, 0, 0),
+    WAYPOINT(-1865.0f, 2250.0f, 0, 0),//左拐点
+    WAYPOINT(-2515.0f, 2250.0f, 0, 0),//右拐点
+    WAYPOINT(-2515.0f, 1750.0f, 0, 0),
+    WAYPOINT(-2515.0f, 1250.0f, 0, 0),
+    WAYPOINT(-2515.0f, 760.0f, 0, 0),
+    WAYPOINT(-2515.0f, 270.0f, 0, 0),
+    WAYPOINT(-2515.0f, 0.0f, 0, false),//右起点
 };
 
 static float App_CurrentMoveHeadingBiasRad(void)
@@ -682,7 +682,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
             !s_route_pour_sent &&
-            s_route[s_route_index].x_mm == -2615.0f &&
+            s_route[s_route_index].x_mm == -2515.0f &&
             s_route[s_route_index].y_mm == 2250.0f) {
             UpperCP_SendTask("pour");
             s_route_pour_sent = true;
