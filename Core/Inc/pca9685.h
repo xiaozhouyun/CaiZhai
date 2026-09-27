@@ -47,7 +47,7 @@ int32_t PCA9685_Set270Angle(float angle_deg);
  */
 int32_t PCA9685_Set270AngleSmooth(float target_angle_deg, uint16_t steps, uint32_t step_delay_ms);
 /**
- * @brief  获取指定通道 180° 舵机的当前记录角度
+ * @brief  获取指定通道的当前指令角度（180°/360°位置舵机共用，非实测反馈）
  * @param  channel: PCA9685 通道 (0~15)
  * @return 当前角度（度）
  */

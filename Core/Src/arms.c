@@ -22,6 +22,7 @@
  *
  * 六段实测斜率依次为 1.0、2.0、2.5、1.5、3.0、2.0 mm/°，不能使用统一比例。
  * 相邻标定点之间使用分段线性插值，避免少量数据拟合高阶曲线后产生过冲。
+ * 归零/收回改为 -75°；-75° 至 -70° 尚未标定位移，暂按标定伸出量 0mm 处理。
  */
 static const float s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT] = {
     -70.0f, -50.0f, -30.0f, -20.0f, -10.0f, 0.0f, 10.0f
@@ -153,7 +154,7 @@ static float Arm_ExtendAngleForDistanceMm(float distance_mm)
     uint8_t i;
 
     if (distance_mm <= s_arm_extend_distance_mm[0]) {
-        return s_arm_extend_angle_deg[0];
+        return ARM_EXTEND_MIN_ANGLE_DEG;
     }
     if (distance_mm >= s_arm_extend_distance_mm[ARM_EXTEND_CAL_POINT_COUNT - 1U]) {
         return s_arm_extend_angle_deg[ARM_EXTEND_CAL_POINT_COUNT - 1U];
@@ -194,7 +195,7 @@ void extend_cm(float dist_cm)
 }
 
 /**
-  * @brief  机械臂伸缩机构归零/复位到实测完全收缩位置 (-70°)
+  * @brief  机械臂伸缩机构归零/复位到收回位置 (-75°)
   * @note   驱动通道 6U 伸缩舵机平滑旋转至共用收缩限位
   */
 void Arm_ExtendZero(void)
@@ -244,7 +245,7 @@ void Arm_put(void)
 }
 
 /**
-  * @brief  机械臂旋转角度控制（云台旋转舵机，通道 7U）
+  * @brief  机械臂旋转角度控制（360°位置云台舵机，通道 3U）
   * @param  angle_deg 目标角度，单位：度
   */
 void Arm_SetRotateAngle(float angle_deg)

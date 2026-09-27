@@ -36,7 +36,7 @@
 #define APP_QR_GIMBAL_LEFT_DEG       -20.0f  /* 二维码搜索左侧最大角度 */
 #define APP_QR_GIMBAL_RIGHT_DEG       20.0f  /* 二维码搜索右侧最大角度 */
 #define APP_QR_GIMBAL_B_MIN_DEG       70.0f  /* B 区二维码搜索的水平云台下限 */
-#define APP_QR_GIMBAL_B_MAX_DEG       90.0f  /* B 区二维码搜索的水平云台上限 */
+#define APP_QR_GIMBAL_B_MAX_DEG       130.0f  /* B 区二维码搜索的水平云台上限 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
 #define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
@@ -83,7 +83,7 @@ static bool s_qr_scan_started;         /* C 区二维码扫描是否已启动，
 static uint32_t s_qr_scan_deadline;    /* C 区二维码扫描超时时刻，超过后使用默认路线继续执行 */
 static bool s_route_pour_sent;         /* C 区倒料点 pour 指令发送标志，确保同一个倒料等待阶段只发送一次 pour */
 static uint8_t s_qr_scan_phase;        /* 二维码水平搜索阶段：左转、左回中、右转、右回中循环 */
-static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 7 */
+static float s_qr_gimbal_angle;        /* 二维码扫描当前水平云台角，控制 PCA9685 通道 3 */
 static uint32_t s_qr_scan_step_start_tick; /* 当前二维码扫描停留阶段的起始时刻，用于俯仰慢速扫动 */
 static uint32_t s_qr_scan_step_deadline; /* 下一次二维码扫描舵机步进允许执行的时刻 */
 static bool s_vision_camera_search_active; /* send 后无上位机消息时，是否启用摄像头上下搜索 */
@@ -202,18 +202,18 @@ static const AppWaypoint_t k_route_b[] = {
 
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
-    WAYPOINT(-1865.0f, 0.0f, 0, false),//左起点
-    WAYPOINT(-1865.0f, 270.0f, 0, 0),
-    WAYPOINT(-1865.0f, 760.0f, 0, 0),
-    WAYPOINT(-1865.0f, 1260.0f, 0, 0),
-    WAYPOINT(-1865.0f, 1770.0f, 0, 0),
-    WAYPOINT(-1865.0f, 2250.0f, 0, 0),//左拐点
-    WAYPOINT(-2515.0f, 2250.0f, 0, 0),//右拐点
-    WAYPOINT(-2515.0f, 1750.0f, 0, 0),
-    WAYPOINT(-2515.0f, 1250.0f, 0, 0),
-    WAYPOINT(-2515.0f, 760.0f, 0, 0),
-    WAYPOINT(-2515.0f, 270.0f, 0, 0),
-    WAYPOINT(-2515.0f, 0.0f, 0, false),//右起点
+    WAYPOINT(-1915.0f, 0.0f, 0, false),//左起点
+    WAYPOINT(-1915.0f, 270.0f, 0, 0),
+    WAYPOINT(-1915.0f, 760.0f, 0, 0),
+    WAYPOINT(-1915.0f, 1260.0f, 0, 0),
+    WAYPOINT(-1915.0f, 1770.0f, 0, 0),
+    WAYPOINT(-1915.0f, 2250.0f, 0, 0),//左拐点
+    WAYPOINT(-2565.0f, 2250.0f, 0, 0),//右拐点
+    WAYPOINT(-2565.0f, 1750.0f, 0, 0),
+    WAYPOINT(-2565.0f, 1250.0f, 0, 0),
+    WAYPOINT(-2565.0f, 760.0f, 0, 0),
+    WAYPOINT(-2565.0f, 270.0f, 0, 0),
+    WAYPOINT(-2565.0f, 0.0f, 0, false),//右起点
 };
 
 static float App_CurrentMoveHeadingBiasRad(void)
@@ -383,7 +383,7 @@ static void App_QrScanSweepTick(void)
                 s_qr_scan_phase = APP_QR_SCAN_LEFT;
             }
         }
-        (void)PCA9685_Set180Angle(7U, s_qr_gimbal_angle);
+        (void)PCA9685_Set360Angle(3U, s_qr_gimbal_angle);
         return;
     }
 
@@ -421,7 +421,7 @@ static void App_QrScanSweepTick(void)
         break;
     }
 
-    (void)PCA9685_Set180Angle(7U, s_qr_gimbal_angle);
+    (void)PCA9685_Set360Angle(3U, s_qr_gimbal_angle);
 }
 
 /**
@@ -538,7 +538,7 @@ void App_RunCurrentMode(void)
                 if (ActionScheduler_IsGimbalBusy()) {
                     break;
                 }
-                if (fabsf(PCA9685_Get180Angle(7U) - APP_QR_GIMBAL_B_MAX_DEG) > 0.1f) {
+                if (fabsf(PCA9685_Get180Angle(3U) - APP_QR_GIMBAL_B_MAX_DEG) > 0.1f) {
                     /* 先安全抬升并平滑转到 +90 度，到位后再开始扫码。 */
                     ActionScheduler_StartGimbalMove(APP_QR_GIMBAL_B_MAX_DEG, 1000U);
                     break;
@@ -570,7 +570,7 @@ void App_RunCurrentMode(void)
             if (!s_qr_scan_started) {
                 UpperCP_ResetQrResult();
                 PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG); /* 二维码相机从扫码起始俯仰角开始慢速扫动 */
-                PCA9685_Set180Angle(7U, 0.0f); /* 扫码前水平云台回中，避免沿用上一次偏角 */
+                PCA9685_Set360Angle(3U, 0.0f); /* 扫码前水平云台回中，避免沿用上一次偏角 */
                 s_qr_scan_phase = APP_QR_SCAN_LEFT;
                 s_qr_gimbal_angle = 0.0f;
                 s_qr_scan_step_start_tick = HAL_GetTick();
@@ -583,11 +583,11 @@ void App_RunCurrentMode(void)
 
             if ((CameraFlag != 0U) && (fruits_count == 8U)) {
                 PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
-                PCA9685_Set180Angle(7U, 0.0f);
+                PCA9685_Set360Angle(3U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C_ENTRY);
             } else if ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0) {
                 PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
-                PCA9685_Set180Angle(7U, 0.0f);
+                PCA9685_Set360Angle(3U, 0.0f);
                 App_SetMode(APP_MODE_ROUTE_C_ENTRY);
                 // App_SetMode(APP_MODE_IDLE);
             } else {
@@ -682,7 +682,7 @@ static void App_RouteTick(void)
         }
         if (g_app_mode == APP_MODE_ROUTE_C &&
             !s_route_pour_sent &&
-            s_route[s_route_index].x_mm == -2515.0f &&
+            s_route[s_route_index].x_mm == -2565.0f &&
             s_route[s_route_index].y_mm == 2250.0f) {
             UpperCP_SendTask("pour");
             s_route_pour_sent = true;
@@ -772,7 +772,7 @@ static void App_RouteTick(void)
         } else {
             /* 由 Task07 线性插补到反向视野，不能直接跳到 -90度。
              * 但如果之前跳过逻辑已经把云台转到了 -90°，直接下降升降台即可。 */
-            if (PCA9685_Get180Angle(7U) < -75.0f) {
+            if (PCA9685_Get180Angle(3U) < -75.0f) {
                 Move_Pos(2.0f);
                 s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
                 App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);

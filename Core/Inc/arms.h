@@ -3,8 +3,8 @@
 
 #include "main.h"
 
-/* 伸缩通道当前实测范围：-70° 完全收回，+10° 对应相对伸出 150mm。 */
-#define ARM_EXTEND_MIN_ANGLE_DEG      (-70.0f)
+/* 伸缩归零/收回角度为 -75°；距离标定仍以 -70° 为基准，+10° 对应 150mm。 */
+#define ARM_EXTEND_MIN_ANGLE_DEG      (-75.0f)
 #define ARM_EXTEND_MAX_ANGLE_DEG      (10.0f)
 
 /**
@@ -44,7 +44,7 @@ void extend_cm(float dist_cm);
 float Arm_ExtendAngleForDeltaCm(float current_angle_deg, float dist_cm);
 
 /**
- * @brief  机械臂伸缩机构归零/复位到实测完全收缩位置 (-70°)
+ * @brief  机械臂伸缩机构归零/复位到收回位置 (-75°)
  */
 void Arm_ExtendZero(void);
 

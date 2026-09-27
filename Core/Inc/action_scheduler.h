@@ -10,7 +10,7 @@ void ActionScheduler_Init(void);
 void ActionScheduler_RequestVisionArm(uint8_t command);
 /** @brief 推进一次状态机；由 StartTask07 每 20ms 调用，函数内禁止延时。 */
 void ActionScheduler_Tick(void);
-/** @brief 启动通道7云台的非阻塞匀速转动；实际插补由 ActionScheduler_Tick 完成。 */
+/** @brief 启动通道3的360°位置云台的非阻塞匀速转动；实际插补由 ActionScheduler_Tick 完成。 */
 void ActionScheduler_StartGimbalMove(float target_angle_deg, uint32_t duration_ms);
 /** @brief 查询云台是否仍在“抬升至10cm”或“匀速转动”阶段。 */
 bool ActionScheduler_IsGimbalBusy(void);

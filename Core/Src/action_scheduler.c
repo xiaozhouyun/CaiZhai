@@ -80,7 +80,7 @@ typedef enum {
     /* 已下发通道5=3度闭爪；等待 ARM_CLAW_CLOSE_MS，确保果实夹紧后才允许转运。 */
 
     ACTION_PUT_WAIT_LIFT,
-    /* 已下发升降台到安全高度的命令；等待 ARM_PUT_LIFT_SETTLE_MS 后把通道7云台转回 0度中位。 */
+    /* 已下发升降台到安全高度的命令；等待 ARM_PUT_LIFT_SETTLE_MS 后把通道3云台转回 0度中位。 */
 
     ACTION_PUT_WAIT_EXTEND,
     /* 已下发通道6收臂；等待 ARM_RETRACT_SETTLE_MS 后再下发升降台抬升命令。 */
@@ -131,9 +131,9 @@ typedef enum {
 static ActionState_t s_state;       /* 当前动作阶段；由 ActionScheduler_Tick() 根据 s_deadline 推进 */
 static uint32_t s_deadline;         /* 当前阶段最早允许推进的 HAL 时基；统一用有符号差值判断是否到期 */
 static uint8_t s_retry_count;       /* 云台停止转动后的底盘对准次数；过多仍未对准则放弃当前目标 */
-static bool s_gimbal_moving;        /* 通道7是否正在执行非阻塞匀速轨迹；由 GimbalTick 分帧插补 */
+static bool s_gimbal_moving;        /* 通道3是否正在执行非阻塞匀速轨迹；由 GimbalTick 分帧插补 */
 static bool s_gimbal_lift_pending;  /* 云台转动前，是否仍在等待升降台到 10cm，防止大角度转动撞机构 */
-static float s_gimbal_start_angle;  /* 本次云台插补轨迹起始角度，来自 PCA9685_Get180Angle(7U) */
+static float s_gimbal_start_angle;  /* 本次云台插补轨迹起始角度，来自 PCA9685_Get180Angle(3U)，仅为指令记录 */
 static float s_gimbal_target_angle; /* 本次云台插补轨迹目标角度，单位：度 */
 static uint32_t s_gimbal_start_tick;/* 本次云台插补轨迹起始时刻 */
 static uint32_t s_gimbal_duration;  /* 本次云台插补轨迹总时长，单位：ms */
@@ -183,7 +183,7 @@ static void ActionScheduler_Debug(const char *event, uint8_t command)
                 command,
                 ActionScheduler_StateName(s_state),
                 ActionScheduler_IsBusy() ? 1U : 0U,
-                PCA9685_Get180Angle(7U),
+                PCA9685_Get180Angle(3U),
                 s_retry_count,
                 TofData);
 }
@@ -196,8 +196,8 @@ static void ActionScheduler_SetCameraCenterIfNeeded(float target_angle_deg)
 }
 
 /*
- * 通道7每个 Task07 Tick 只更新一次插补目标。
- * 它使用非阻塞的 PCA9685_Set180Angle()，不能使用内部带 vTaskDelay 的 Smooth 接口。
+ * 通道3每个 Task07 Tick 只更新一次插补目标。
+ * 它使用非阻塞的 PCA9685_Set360Angle()，不能使用内部带 vTaskDelay 的 Smooth 接口。
  */
 static void ActionScheduler_GimbalTick(void)
 {
@@ -208,13 +208,13 @@ static void ActionScheduler_GimbalTick(void)
     if (s_gimbal_lift_pending) {
         /*
          * 大范围转云台前先等升降台到安全高度。
-         * 等待期间不改变通道7角度，避免升降台未到位时云台先扫过去碰到机构。
+         * 等待期间不改变通道3角度，避免升降台未到位时云台先扫过去碰到机构。
          */
         if ((int32_t)(HAL_GetTick() - s_gimbal_lift_deadline) < 0) {
             return;
         }
         s_gimbal_lift_pending = false;
-        s_gimbal_start_angle = PCA9685_Get180Angle(7U);
+        s_gimbal_start_angle = PCA9685_Get180Angle(3U);
         s_gimbal_start_tick = HAL_GetTick();
         ActionScheduler_SetCameraCenterIfNeeded(s_gimbal_target_angle);
         s_gimbal_moving = true;
@@ -232,7 +232,7 @@ static void ActionScheduler_GimbalTick(void)
     elapsed = HAL_GetTick() - s_gimbal_start_tick;
     if (elapsed >= s_gimbal_duration) {
         ActionScheduler_SetCameraCenterIfNeeded(s_gimbal_target_angle);
-        (void)PCA9685_Set180Angle(7U, s_gimbal_target_angle);
+        (void)PCA9685_Set360Angle(3U, s_gimbal_target_angle);
         s_gimbal_moving = false;
         ActionScheduler_Debug("GIMBAL_DONE", 0U);
         return;
@@ -241,7 +241,7 @@ static void ActionScheduler_GimbalTick(void)
     progress = (float)elapsed / (float)s_gimbal_duration;
     angle = s_gimbal_start_angle
           + (s_gimbal_target_angle - s_gimbal_start_angle) * progress;
-    (void)PCA9685_Set180Angle(7U, angle);
+    (void)PCA9685_Set360Angle(3U, angle);
 }
 
 static bool ActionScheduler_Expired(void)
@@ -354,11 +354,11 @@ static void ActionScheduler_StartGimbalMoveInternal(float target_angle_deg, uint
     }
 
     /* 调用方已经完成升至10cm的等待，可立即开始本次云台插补。 */
-    s_gimbal_start_angle = PCA9685_Get180Angle(7U);
+    s_gimbal_start_angle = PCA9685_Get180Angle(3U);
     s_gimbal_start_tick = HAL_GetTick();
     if (duration_ms == 0U || s_gimbal_start_angle == s_gimbal_target_angle) {
         ActionScheduler_SetCameraCenterIfNeeded(target_angle_deg);
-        (void)PCA9685_Set180Angle(7U, target_angle_deg);
+        (void)PCA9685_Set360Angle(3U, target_angle_deg);
         s_gimbal_moving = false;
         s_gimbal_lift_pending = false;
     } else {
@@ -401,7 +401,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         return;
     }
 
-    gimbal_angle = PCA9685_Get180Angle(7U);
+    gimbal_angle = PCA9685_Get180Angle(3U);
     if (command == 1U || command == 2U) {
         /*
          * arm:1/2 仅做视觉水平对准：
@@ -530,7 +530,7 @@ void ActionScheduler_Tick(void)
     case ACTION_PUT_WAIT_LIFT:
         /* 升降台到达10cm后，云台回到中位。时长按当前角度比例计算，对齐航线摆动速度。 */
         {
-            float delta = fabsf(PCA9685_Get180Angle(7U));
+            float delta = fabsf(PCA9685_Get180Angle(3U));
             uint32_t dur = (uint32_t)(delta * 13.0f);
             if (dur < 300U) dur = 300U;
             ActionScheduler_StartGimbalMoveInternal(0.0f, dur, false);
@@ -566,7 +566,7 @@ void ActionScheduler_Tick(void)
          * B、C 区不切换第二视野，跳过后先回到 0° 中位。
          */
         {
-            float cur = PCA9685_Get180Angle(7U);
+            float cur = PCA9685_Get180Angle(3U);
             float target;
             if (g_app_mode == APP_MODE_ROUTE_A && cur > 75.0f) {
                 /* 仅 A 区：云台在 +90° 附近 → 转到 -90° */
@@ -628,7 +628,7 @@ void ActionScheduler_Tick(void)
     case ACTION_BAD_WAIT_CLOSE:
         /* 抓稳后从当前位置朝0度中位移动15度；不足15度时直接到0度。 */
         {
-            float cur = PCA9685_Get180Angle(7U);
+            float cur = PCA9685_Get180Angle(3U);
             float target = 0.0f;
             uint32_t dur;
 
@@ -672,7 +672,7 @@ void ActionScheduler_Tick(void)
     case ACTION_BAD_WAIT_LIFT:
         /* 抬升完成后从当前角度平滑回到0度中位。 */
         {
-            float delta = fabsf(PCA9685_Get180Angle(7U));
+            float delta = fabsf(PCA9685_Get180Angle(3U));
             uint32_t dur = (uint32_t)(delta * 13.0f);
             if (dur < 300U) dur = 300U;
             ActionScheduler_StartGimbalMoveInternal(0.0f, dur, false);
