@@ -163,6 +163,28 @@ int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg)
         PCA9685_AngleToPulseUs(angle_deg, 90.0f)));
 }
 
+int32_t PCA9685_Set360Angle(uint8_t channel, float angle_deg)
+{
+    if (channel >= PCA9685_CHANNEL_COUNT)
+    {
+        return -1;
+    }
+
+    if (angle_deg < -180.0f)
+    {
+        angle_deg = -180.0f;
+    }
+    else if (angle_deg > 180.0f)
+    {
+        angle_deg = 180.0f;
+    }
+
+    /* 360°位置舵机：0°为1500 us中位，-180°~+180°映射到500~2500 us。 */
+    s_pca9685_180_angles[channel] = angle_deg;
+    return PCA9685_SetTicks(channel, PCA9685_PulseUsToTicks(
+        PCA9685_AngleToPulseUs(angle_deg, 180.0f)));
+}
+
 int32_t PCA9685_SetAll180Angle(float angle_deg)
 {
     uint8_t data[4];
@@ -195,10 +217,17 @@ int32_t PCA9685_ResetAllToZero(void)
     PCA9685_Set270Angle(40.0f);
     s_pca9685_180_angles[0] = 40.0f;
 
-    /* 通道 1~15：180° 舵机，逐个归零 */
+    /* 通道 1~15：逐个设置上电位置。 */
     for (uint8_t i = 1U; i < PCA9685_CHANNEL_COUNT; i++)
     {
         float zero_angle = 0.0f;
+
+        /* 通道 3：360°位置舵机保持 1500 us 中位脉宽。 */
+        if (i == 3U)
+        {
+            PCA9685_Set360Angle(i, 0.0f);
+            continue;
+        }
 
         /* 通道 6：使用伸缩机构共用的实测收缩位置。 */
         if (i == 6U)

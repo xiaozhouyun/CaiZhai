@@ -180,10 +180,10 @@ static void App_LogLiftTxStatus(void)
 
 /* 航线 A 的目标路径点序列 */
 static const AppWaypoint_t k_route_a[] = {
-    WAYPOINT(0.0f, 700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1200.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 1700.0f, 0.0f, 1),
-    WAYPOINT(0.0f, 2150.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1150.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 1650.0f, 0.0f, 1),
+    WAYPOINT(0.0f, 2100.0f, 0.0f, 1),
     WAYPOINT(0.0f, 0.0f, PI/2, 0),
     WAYPOINT(-2600.0f, 0.0f, PI/2, false),
 };
@@ -203,16 +203,16 @@ static const AppWaypoint_t k_route_b[] = {
 /* 航线 C 的目标路径点序列 */
 static const AppWaypoint_t k_route_c[] = {
     WAYPOINT(-1965.0f, 0.0f, 0, false),//左起点
-    WAYPOINT(-1965.0f, 370.0f, 0, 0),
-    WAYPOINT(-1965.0f, 860.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1360.0f, 0, 0),
-    WAYPOINT(-1965.0f, 1870.0f, 0, 0),
-    WAYPOINT(-1965.0f, 2300.0f, 0, 0),//左拐点
-    WAYPOINT(-2615.0f, 2300.0f, 0, 0),//右拐点
-    WAYPOINT(-2615.0f, 1850.0f, 0, 0),
-    WAYPOINT(-2615.0f, 1350.0f, 0, 0),
-    WAYPOINT(-2615.0f, 860.0f, 0, 0),
-    WAYPOINT(-2615.0f, 370.0f, 0, 0),
+    WAYPOINT(-1965.0f, 270.0f, 0, 0),
+    WAYPOINT(-1965.0f, 760.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1260.0f, 0, 0),
+    WAYPOINT(-1965.0f, 1770.0f, 0, 0),
+    WAYPOINT(-1965.0f, 2250.0f, 0, 0),//左拐点
+    WAYPOINT(-2615.0f, 2250.0f, 0, 0),//右拐点
+    WAYPOINT(-2615.0f, 1750.0f, 0, 0),
+    WAYPOINT(-2615.0f, 1250.0f, 0, 0),
+    WAYPOINT(-2615.0f, 760.0f, 0, 0),
+    WAYPOINT(-2615.0f, 270.0f, 0, 0),
     WAYPOINT(-2615.0f, 0.0f, 0, false),//右起点
 };
 
@@ -491,8 +491,15 @@ void App_RunCurrentMode(void)
 //            if (target_angle > ARM_EXTEND_MAX_ANGLE_DEG) {
 //                target_angle = ARM_EXTEND_MAX_ANGLE_DEG;
 //            }
-            (void)PCA9685_Set180Angle(6U, -50.0f);
-            s_app_running = false;
+
+            (void)PCA9685_Set360Angle(3U, 90.0f);
+            osDelay(1500);
+            (void)PCA9685_Set360Angle(3U, -90.0f);
+            //          Chassis_SetSpeed(0.0f,1.2f);
+
+            // s_app_running = false;
+            // osDelay(5000);
+            //     Chassis_SetSpeed(0.0f,0.0f);
             App_SetMode(APP_MODE_IDLE);
             break;
         }
@@ -676,7 +683,7 @@ static void App_RouteTick(void)
         if (g_app_mode == APP_MODE_ROUTE_C &&
             !s_route_pour_sent &&
             s_route[s_route_index].x_mm == -2615.0f &&
-            s_route[s_route_index].y_mm == 2300.0f) {
+            s_route[s_route_index].y_mm == 2250.0f) {
             UpperCP_SendTask("pour");
             s_route_pour_sent = true;
             s_route_state = APP_ROUTE_WAIT_POUR;

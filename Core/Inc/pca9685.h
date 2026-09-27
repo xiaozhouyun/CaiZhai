@@ -62,6 +62,14 @@ float PCA9685_Get180Angle(uint8_t channel);
 int32_t PCA9685_Set180Angle(uint8_t channel, float angle_deg);
 
 /**
+ * @brief  直接设置指定通道 360°位置舵机的目标角度
+ * @param  channel: PCA9685 通道 (0~15)
+ * @param  angle_deg: 目标角度 (-180.0f 至 180.0f，0°为中位)
+ * @return 0 成功，-1 失败
+ */
+int32_t PCA9685_Set360Angle(uint8_t channel, float angle_deg);
+
+/**
  * @brief  广播设置全部 0~15 通道舵机到同一角度（一次性硬件广播，非逐个遍历）
  * @param  angle_deg: 目标角度 (-90.0f 至 90.0f)
  * @return 0 成功，-1 失败
@@ -71,7 +79,8 @@ int32_t PCA9685_SetAll180Angle(float angle_deg);
 /**
  * @brief  上电初始化：所有舵机通道归零
  *         - 通道 0（270° 舵机）：走 Set270Angle(0)，物理中心位
- *         - 通道 1~15（180° 舵机）：走 Set180Angle(0)
+ *         - 通道 3（360°位置舵机）：走 Set360Angle(0)，保持 1500 us 中位脉宽
+ *         - 其他通道（180° 舵机）：走 Set180Angle(0)
  * @return 0 成功
  */
 int32_t PCA9685_ResetAllToZero(void);

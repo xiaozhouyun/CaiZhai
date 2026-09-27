@@ -236,7 +236,6 @@ void StartDefaultTask(void *argument)
       Navigation_Stop();
       vTaskDelay(pdMS_TO_TICKS(2000U));
    
-  /* 初始化完成，任务自杀 */
   for(;;)
   {
      g_robot_pos.yaw = Get_zeroYaw();
