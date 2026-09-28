@@ -403,21 +403,27 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
 
     gimbal_angle = PCA9685_Get180Angle(3U);
     if (command == 1U || command == 2U) {
+        float outer_limit = (g_app_mode == APP_MODE_SCAN_B) ?
+            APP_B_GRAB_GIMBAL_DEG + APP_B_GRAB_ALIGN_DEG : ARM_GIMBAL_LIMIT_DEG;
+        float inner_limit = (g_app_mode == APP_MODE_SCAN_B) ?
+            APP_B_GRAB_GIMBAL_DEG - APP_B_GRAB_ALIGN_DEG : ARM_GIMBAL_REVERSE_DEG;
+
         /*
          * arm:1/2 仅做视觉水平对准：
          * - arm:1 向负方向微调云台；
          * - arm:2 向正方向微调云台；
          * - 向外到 +/-120° 极限还没对准时，让底盘前移重新获得视野；
          * - 从 +90° 回到 +80°，或从 -90° 回到 -80° 后，不再转云台，改用底盘后退。
+         * - B 区改为同侧 120° 基准双向各 10°，外限前移、内限后退。
          */
         use_chassis_align = false;
         chassis_dir = 1U;
-        if ((command == 1U && gimbal_angle > 0.0f && gimbal_angle <= ARM_GIMBAL_REVERSE_DEG) ||
-            (command == 2U && gimbal_angle < 0.0f && gimbal_angle >= -ARM_GIMBAL_REVERSE_DEG)) {
+        if ((command == 1U && gimbal_angle > 0.0f && gimbal_angle <= inner_limit) ||
+            (command == 2U && gimbal_angle < 0.0f && gimbal_angle >= -inner_limit)) {
             use_chassis_align = true;
             chassis_dir = 0U;
-        } else if ((command == 1U && gimbal_angle <= -ARM_GIMBAL_LIMIT_DEG) ||
-                   (command == 2U && gimbal_angle >= ARM_GIMBAL_LIMIT_DEG)) {
+        } else if ((command == 1U && gimbal_angle <= -outer_limit) ||
+                   (command == 2U && gimbal_angle >= outer_limit)) {
             use_chassis_align = true;
         }
 
@@ -436,11 +442,18 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         } else {
             float target_angle = gimbal_angle + ((command == 1U) ? -1.0f : 1.0f);
 
-            /* 起始角度可能带小数，最后一步限制在 +/-120° 内。 */
-            if (target_angle > ARM_GIMBAL_LIMIT_DEG) {
-                target_angle = ARM_GIMBAL_LIMIT_DEG;
-            } else if (target_angle < -ARM_GIMBAL_LIMIT_DEG) {
-                target_angle = -ARM_GIMBAL_LIMIT_DEG;
+            /* 起始角度可能带小数，最后一步钳位，B 区内外边界都不能越过。 */
+            if (target_angle > outer_limit) {
+                target_angle = outer_limit;
+            } else if (target_angle < -outer_limit) {
+                target_angle = -outer_limit;
+            }
+            if (g_app_mode == APP_MODE_SCAN_B) {
+                if (gimbal_angle > 0.0f && target_angle < inner_limit) {
+                    target_angle = inner_limit;
+                } else if (gimbal_angle < 0.0f && target_angle > -inner_limit) {
+                    target_angle = -inner_limit;
+                }
             }
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
             /* 视觉对准阶段固定在抓取高度，不能伪造“已升到10cm”的 now_pos。 */
@@ -529,14 +542,14 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("PUT_START", 0U);
         break;
     case ACTION_PUT_WAIT_EXTEND:
-        /* 伸缩臂完全收回后，升降台抬升到10cm。 */
+        /* 伸缩臂完全收回后，升降台抬升到27cm。 */
         Move_Pos(27.0f);
         s_state = ACTION_PUT_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("PUT_LIFT", 0U);
         break;
     case ACTION_PUT_WAIT_LIFT:
-        /* 升降台到达10cm后，云台回到中位。时长按当前角度比例计算，对齐航线摆动速度。 */
+        /* 升降台到达27cm后，云台回到中位。时长按当前角度比例计算，对齐航线摆动速度。 */
         {
             float delta = fabsf(PCA9685_Get180Angle(3U));
             uint32_t dur = (uint32_t)(delta * 13.0f);

@@ -13,6 +13,7 @@ static uint8_t tof200f_start_single[] = {0x01, 0x03, 0x00, 0x10, 0x00, 0x01, 0x8
 #define TOF200F_RX_FRAME_LEN  7
 #define TOF200F_REAR_ADDRESS  0x01U
 #define TOF200F_FRONT_ADDRESS 0x02U
+#define TOF200F_FRONT_FILTER_SAMPLES 5U
 
 /* 后置 TOF200F：USART1，Modbus 地址 0x01。 */
 volatile float TofData = 0.0f;
@@ -27,6 +28,44 @@ static uint8_t tof200f_rear_rx_buf[TOF200F_RX_FRAME_LEN];
 static uint8_t tof200f_rear_rx_index = 0U;
 static uint8_t tof200f_front_rx_buf[TOF200F_RX_FRAME_LEN];
 static uint8_t tof200f_front_rx_index = 0U;
+static uint16_t tof200f_front_samples[TOF200F_FRONT_FILTER_SAMPLES];
+static uint8_t tof200f_front_sample_count = 0U;
+static uint8_t tof200f_front_sample_index = 0U;
+
+/**
+ * @brief  对前向 TOF 最近 5 个有效距离取中值，抑制单帧和少量跳变
+ */
+static uint16_t TOF200F_FilterFrontDistance(uint16_t raw_dist)
+{
+    uint16_t sorted[TOF200F_FRONT_FILTER_SAMPLES];
+    uint8_t i;
+
+    tof200f_front_samples[tof200f_front_sample_index] = raw_dist;
+    tof200f_front_sample_index++;
+    if (tof200f_front_sample_index >= TOF200F_FRONT_FILTER_SAMPLES)
+    {
+        tof200f_front_sample_index = 0U;
+    }
+    if (tof200f_front_sample_count < TOF200F_FRONT_FILTER_SAMPLES)
+    {
+        tof200f_front_sample_count++;
+    }
+
+    for (i = 0U; i < tof200f_front_sample_count; i++)
+    {
+        uint8_t j = i;
+        sorted[i] = tof200f_front_samples[i];
+        while ((j > 0U) && (sorted[j - 1U] > sorted[j]))
+        {
+            uint16_t temp = sorted[j - 1U];
+            sorted[j - 1U] = sorted[j];
+            sorted[j] = temp;
+            j--;
+        }
+    }
+
+    return sorted[tof200f_front_sample_count / 2U];
+}
 
 /**
  * @brief  简易 MODBUS CRC16 校验计算
@@ -114,6 +153,10 @@ static void TOF200F_ParseByte(uint8_t data,
 
             if ((raw_dist > 0U) && (raw_dist < 4000U))
             {
+                if (expected_address == TOF200F_FRONT_ADDRESS)
+                {
+                    raw_dist = TOF200F_FilterFrontDistance(raw_dist);
+                }
                 *distance = (float)raw_dist;
                 (*frame_seq)++;
             }
@@ -130,6 +173,8 @@ void TOF200F_Init(void)
 {
     tof200f_rear_rx_index = 0U;
     tof200f_front_rx_index = 0U;
+    tof200f_front_sample_count = 0U;
+    tof200f_front_sample_index = 0U;
     TofData = 0.0f;
     TofFrameSeq = 0U;
     FrontTofData = 0.0f;

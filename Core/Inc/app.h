@@ -25,6 +25,8 @@ typedef enum {
 #define APP_ACTION_POSITIVE  0x01U
 #define APP_ACTION_NEGATIVE  0x02U
 #define APP_CAMERA_CENTER_DEG 40.0f
+#define APP_B_GRAB_GIMBAL_DEG 120.0f /* B 区各抓取点的云台基准角绝对值 */
+#define APP_B_GRAB_ALIGN_DEG   10.0f /* B 区相对基准角的双向微调范围 */
 
 /**
  * @brief 路径点（航点）结构体

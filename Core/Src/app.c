@@ -47,8 +47,9 @@
 #define APP_C_TOF_FRAME_STALE_MS     300U     /* 持续移动时超过 300ms 无新帧，立即停车等待数据 */
 #define APP_C_TOF_STABLE_FRAMES        2U     /* 连续两帧达标后才置零，避免单帧抖动误触发 */
 #define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
+#define APP_B_TOF_TOLERANCE_MM        50.0f   /* B 区允许误差为正负 5cm */
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
-#define APP_B_TOF_X_TARGET_MM        1800.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
+#define APP_B_TOF_X_TARGET_MM        1300.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
@@ -128,10 +129,10 @@ typedef enum {
     /* C 区倒料点已发送 pour，等待 2 秒后继续下一航点。 */
 
     APP_ROUTE_FIRST_WAIT_LIFT,
-    /* 作业点第一视野：已抬升到 25cm，等待到位后向 +90度转云台。 */
+    /* 作业点先抬升到 27cm；B 区转到该点的正/负120度，其他区按视野方向转动。 */
 
     APP_ROUTE_FIRST_WAIT_GIMBAL,
-    /* 云台已转至 +90度，等待 1500ms 给舵机完整转动时间。 */
+    /* 等待首次云台转动结束；B 区直接抓高处，其他区先下降。 */
 
     APP_ROUTE_FIRST_WAIT_LOWER,
     /* 已降至 1cm，等待 3000ms 后向上位机发送第一次 send 任务。 */
@@ -143,10 +144,10 @@ typedef enum {
     /* 第一次视野完成：已再次抬升到 25cm，等待到位后转向 -90度。 */
 
     APP_ROUTE_SECOND_WAIT_GIMBAL,
-    /* 云台已转至 -90度，等待 1500ms 给舵机完整转动时间。 */
+    /* 等待第二次云台转动结束；B 区回同侧120度，其他区转到-90度。 */
 
     APP_ROUTE_SECOND_WAIT_LOWER,
-    /* 已降至 1cm，等待 3000ms 后发送第二次 send 任务。 */
+    /* B 区降至10cm，其他区降至2cm，等待稳定后发送第二次 send。 */
 
     APP_ROUTE_WAIT_GRAB_SECOND
     /* 第二次 send 已发出；完成后航点索引加一并请求下一个航点。 */
@@ -728,7 +729,13 @@ static void App_RouteTick(void)
         if (!App_RouteDelayExpired() || ActionScheduler_IsGimbalBusy()) {
             return;
         }
-        if ((s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U) {
+        if (g_app_mode == APP_MODE_SCAN_B) {
+            /* B 区正负侧都先抓高处，第二次再回同侧抓低处。 */
+            ActionScheduler_StartGimbalMove(
+                (s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U ?
+                APP_B_GRAB_GIMBAL_DEG : -APP_B_GRAB_GIMBAL_DEG, 1600U);
+            s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
+        } else if ((s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U) {
             /* 当前点需要正向视野：先处理 +90 度侧。 */
             ActionScheduler_StartGimbalMove(90.0f, 1000U);
             s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
@@ -770,6 +777,16 @@ static void App_RouteTick(void)
             return;
         }
 
+        if (g_app_mode == APP_MODE_SCAN_B) {
+            /* 高处抓取并回中放果后，先回同侧基准角，再下降抓低处。 */
+            ActionScheduler_StartGimbalMove(
+                (s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U ?
+                APP_B_GRAB_GIMBAL_DEG : -APP_B_GRAB_GIMBAL_DEG, 1600U);
+            s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
+            App_RouteSetDelay(400U);
+            return;
+        }
+
         if ((s_route[s_route_index].action_mask & APP_ACTION_NEGATIVE) == 0U) {
             /* 当前点只有 +90 度目标，第一视野完成后直接进入下一航点。 */
             s_route_index++;
@@ -794,12 +811,11 @@ static void App_RouteTick(void)
             return;
         }
         if (g_app_mode == APP_MODE_SCAN_B) {
-            /* B 区反向视野同样不降低升降台，直接识别并抓取。 */
-            App_SendVisionTask();
-            s_route_state = APP_ROUTE_WAIT_GRAB_SECOND;
-            return;
+            /* B 区第二次保持同侧 120 度，到位后下降至 10cm。 */
+            Move_Pos(10.0f);
+        } else {
+            Move_Pos(2.0f);
         }
-        Move_Pos(2.0f);
         s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
         App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
         return;
@@ -952,7 +968,7 @@ static uint8_t App_RouteC_SelectEntryNode(uint8_t first_position)
  * @param use_front true 使用前 TOF，false 使用后 TOF
  * @details 首次调用只记录帧序号和超时起点，丢弃转向前的旧测距值。之后每个 Tick
  * 只处理一帧新数据：前 TOF 距离过大时前进，后 TOF 距离过大时倒车。
- * 连续两帧进入目标±10mm 才返回完成；断帧超过 300ms 先停车，单轴超过 10s 返回失败。
+ * 连续两帧进入目标±50mm 才返回完成；断帧超过 300ms 先停车，单轴超过 10s 返回失败。
  * @return APP_TOF_CAL_IN_PROGRESS 调整中；APP_TOF_CAL_DONE 稳定达标；
  *         APP_TOF_CAL_FAILED 超时失败
  */
@@ -994,8 +1010,8 @@ static AppTofCalibrationResult_t App_RouteB_AdjustTof(float target_mm, bool use_
     s_b_tof_last_seq = frame_seq;
     s_b_tof_last_frame_tick = now;
 
-    if (distance_mm >= (target_mm - APP_C_TOF_TOLERANCE_MM) &&
-        distance_mm <= (target_mm + APP_C_TOF_TOLERANCE_MM)) {
+    if (distance_mm >= (target_mm - APP_B_TOF_TOLERANCE_MM) &&
+        distance_mm <= (target_mm + APP_B_TOF_TOLERANCE_MM)) {
         /* 进入容差带后先停车，再累计稳定帧，防止惯性和单帧噪声造成误标定。 */
         Chassis_SetSpeed(0.0f, 0.0f);
         s_b_tof_stable_frames++;
