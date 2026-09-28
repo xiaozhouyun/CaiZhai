@@ -45,8 +45,8 @@
 #define ARM_SKIP_LIFT_SETTLE_MS       1500U   /* 跳过目标时升到 5cm：无到位反馈，保守等待避免与收臂重叠 */
 #define ARM_BAD_TOF_SETTLE_MS         500U   /* 坏果流程保留较长测距等待 */
 #define ARM_BAD_RELEASE_SETTLE_MS     500U   /* 坏果开爪后的机构反应时间 */
-#define ARM_GIMBAL_LIMIT_DEG          90.0f  /* 视觉水平对准时的云台机械限位 */
-#define ARM_GIMBAL_REVERSE_DEG        85.0f  /* 从侧向视野回转 10 度后改用底盘后退 */
+#define ARM_GIMBAL_LIMIT_DEG          120.0f /* 视觉水平对准时的云台抓取限位 */
+#define ARM_GIMBAL_REVERSE_DEG        80.0f  /* 从侧向视野回转 10 度后改用底盘后退 */
 #define ARM_CHASSIS_ALIGN_STEP_MM     15.0f  /* 云台停止转动后，底盘单次对准距离 */
 
 /*
@@ -58,7 +58,7 @@
  *
  * arm 命令约定：
  * - arm:0 正常果抓取：测距 -> 开爪 -> 伸臂 -> 闭爪 -> 收臂/抬升/回中/放果；
- * - arm:1/2 视觉水平微调：云台每次小角度左/右转；向外到 90 度后前移，向内回转到 80 度后后退；
+ * - arm:1/2 视觉水平微调：云台每次小角度左/右转；向外到 120 度后前移，向内回转到 80 度后后退；
  * - arm:3/4 视觉垂直微调：升降台上/下移动 1cm；
  * - arm:5 跳过目标：不抓取，执行收臂、抬升、云台切视野/回中，然后通知路线继续；
  * - arm:6 坏果处理：抓取后向中位移动15度并释放，再收臂、抬升、回中。
@@ -407,7 +407,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
          * arm:1/2 仅做视觉水平对准：
          * - arm:1 向负方向微调云台；
          * - arm:2 向正方向微调云台；
-         * - 向外到 +/-90° 极限还没对准时，让底盘前移重新获得视野；
+         * - 向外到 +/-120° 极限还没对准时，让底盘前移重新获得视野；
          * - 从 +90° 回到 +80°，或从 -90° 回到 -80° 后，不再转云台，改用底盘后退。
          */
         use_chassis_align = false;
@@ -429,14 +429,22 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
                 ActionScheduler_StartSkip();
                 ActionScheduler_Debug("GIVEUP_SKIP", command);
             } else {
-                /* 云台保持当前角度，底盘移动 100mm 后等待相机重新反馈。 */
+                /* 云台保持当前角度，底盘按设定步长移动后等待相机重新反馈。 */
                 Emm_V5_Chassis_Pos_Control(chassis_dir, 50, 20, ARM_CHASSIS_ALIGN_STEP_MM);
                 ActionScheduler_Debug((chassis_dir == 0U) ? "CHASSIS_REVERSE" : "CHASSIS_FORWARD", command);
             }
         } else {
+            float target_angle = gimbal_angle + ((command == 1U) ? -1.0f : 1.0f);
+
+            /* 起始角度可能带小数，最后一步限制在 +/-120° 内。 */
+            if (target_angle > ARM_GIMBAL_LIMIT_DEG) {
+                target_angle = ARM_GIMBAL_LIMIT_DEG;
+            } else if (target_angle < -ARM_GIMBAL_LIMIT_DEG) {
+                target_angle = -ARM_GIMBAL_LIMIT_DEG;
+            }
             /* 未到极限时每次只微调 1度，避免单次转动造成目标丢失。 */
             /* 视觉对准阶段固定在抓取高度，不能伪造“已升到10cm”的 now_pos。 */
-            ActionScheduler_StartGimbalMoveInternal(gimbal_angle + ((command == 1U) ? -1.0f : 1.0f), 300U, false);
+            ActionScheduler_StartGimbalMoveInternal(target_angle, 300U, false);
             ActionScheduler_Debug("GIMBAL_STEP", command);
         }
     } else if (command == 3U) {

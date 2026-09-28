@@ -26,7 +26,7 @@
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
-#define APP_QR_SCAN_B_TIMEOUT_MS     30000U  /* B 区覆盖 +90~+70 度搜索所需的最长等待时间 */
+#define APP_QR_SCAN_B_TIMEOUT_MS     300U  /* B 区覆盖 +90~+70 度搜索所需的最长等待时间 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* send 后无上位机消息时，延时后启动摄像头搜索 */
 #define APP_VISION_CAMERA_SEARCH_DWELL_MS 2000U /* 摄像头搜索每个固定角度停留时间 */
@@ -492,15 +492,20 @@ void App_RunCurrentMode(void)
 //                target_angle = ARM_EXTEND_MAX_ANGLE_DEG;
 //            }
 
-            (void)PCA9685_Set360Angle(3U, 90.0f);
-            osDelay(1500);
-            (void)PCA9685_Set360Angle(3U, -90.0f);
+            // (void)PCA9685_Set360Angle(3U, 90.0f);
+            // osDelay(1500);
+            // (void)PCA9685_Set360Angle(3U, -90.0f);
             //          Chassis_SetSpeed(0.0f,1.2f);
 
             // s_app_running = false;
             // osDelay(5000);
             //     Chassis_SetSpeed(0.0f,0.0f);
-            App_SetMode(APP_MODE_IDLE);
+
+
+            Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
+               Move_Pos(27.0f);
+               osDelay(1500);
+            App_SetMode(APP_MODE_CALIBRATE_B);
             break;
         }
 
