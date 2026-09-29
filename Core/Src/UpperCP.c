@@ -156,7 +156,8 @@ void UpperCP_SendTask(const char *task)
 
     if ((strcmp(task, "send") == 0) ||
         (strcmp(task, "pour") == 0) ||
-        (strcmp(task, "scan") == 0)) {
+        (strcmp(task, "scan") == 0) ||
+        (strcmp(task, "scanb") == 0)) {
         valid_task = 1U;
     } else if (strncmp(task, "send:", 5U) == 0) {
         const char *position_text = task + 5;
@@ -205,12 +206,20 @@ uint8_t fruits[8] = { 4, 3, 1, 10, 8, 9, 2, 11};
 /* uint8_t fruits[8] = {12,2,9,4,5,11,1,7}; */
 
 uint8_t fruits_count = 0;
+uint8_t b_fruits[8] = {0U};
+uint8_t b_fruits_count = 0U;
 
 void UpperCP_ResetQrResult(void)
 {
     memcpy(fruits, k_default_fruits, sizeof(fruits));
     fruits_count = 0U;
     CameraFlag = 0U;
+}
+
+void UpperCP_ResetBQrResult(void)
+{
+    memset(b_fruits, 0, sizeof(b_fruits));
+    b_fruits_count = 0U;
 }
 
 void UpperCP_RX(void)
@@ -362,7 +371,37 @@ void Arm_func(void)
 
 void ErWeiMa_func(void)
 {
-    if (strncmp(ret, "QR", 2) == 0) {
+    if (strcmp(ret, "QRB") == 0) {
+        uint8_t parsed[8];
+        char *p_num;
+        uint8_t i = 0U;
+        uint8_t valid = 1U;
+
+        /* B 区按二维码从上到下的顺序对应图中 1~8 号果树，11=苹果，12=梨子。 */
+        for (p_num = strtok(NULL, ","); p_num != NULL; p_num = strtok(NULL, ",")) {
+            char *end;
+            long value;
+
+            if (i >= 8U) {
+                valid = 0U;
+                break;
+            }
+
+            value = strtol(p_num, &end, 10);
+            if ((end == p_num) || (*end != '\0') ||
+                ((value != 11L) && (value != 12L))) {
+                valid = 0U;
+                break;
+            }
+
+            parsed[i++] = (uint8_t)value;
+        }
+
+        if ((valid != 0U) && (i == 8U)) {
+            memcpy(b_fruits, parsed, sizeof(b_fruits));
+            b_fruits_count = 8U;
+        }
+    } else if (strcmp(ret, "QR") == 0) {
         uint8_t parsed[8];
         uint8_t seen[13] = {0U};
         char *p_num;

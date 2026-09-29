@@ -6,6 +6,8 @@
 extern uint8_t PosFlag;
 extern uint8_t fruits[8];
 extern uint8_t fruits_count;
+extern uint8_t b_fruits[8];    /**< B 区 1~8 号果树类型：11=苹果，12=梨子 */
+extern uint8_t b_fruits_count;
 
 extern uint8_t CameraFlag;
 
@@ -19,6 +21,7 @@ uint32_t UpperCP_GetRxOverflowCount(void);
 uint32_t UpperCP_GetUartErrorCount(void);
 void UpperCP_SendTask(const char *task);
 void UpperCP_ResetQrResult(void);
+void UpperCP_ResetBQrResult(void);
 const char *UpperCP_GetLastCommand(void);
 uint32_t UpperCP_GetRxCount(void);
 uint8_t UpperCP_GetLastByte(void);

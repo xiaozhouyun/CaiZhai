@@ -12,7 +12,7 @@ typedef enum {
     APP_MODE_TEST,      /**< 测试模式：用于调试和测试功能，可能包含自定义的测试逻辑 */
     APP_MODE_ROUTE_A,   /**< 航线 A 模式：执行第一阶段的路径导航（例如向深处前行） */
     APP_MODE_ROUTE_B,   /**< 航线 B 入口模式：从 C 区底部进入 B 区扫码点 */
-    APP_MODE_SCAN_B,    /**< B 区扫码模式：云台在 +70~+90 度搜索后进入抓取路线 */
+    APP_MODE_SCAN_B,    /**< B 区扫码模式：发送 scanb，云台在 -100~-80 度搜索后进入抓取路线 */
     APP_MODE_SCAN_C,    /**< C 区扫码模式：发送 scan 后等待二维码或 10 秒超时 */
     APP_MODE_ROUTE_C_ENTRY, /**< C 区入口模式：根据首个作业位置选择左/右入口 */
     APP_MODE_CALIBRATE_C,   /**< C 区 TOF 校准模式：车尾距挡板 200mm 后将 Y 置零 */

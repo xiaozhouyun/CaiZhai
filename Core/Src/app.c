@@ -26,7 +26,7 @@
 #define APP_ROUTE_LOWER_SETTLE_MS     1500U  /* 降至 1cm 后等待机构稳定，再请求视觉抓取 */
 #define APP_ROUTE_POUR_DELAY_MS       5000U  /* C 区到达倒料点后，等待上位机执行 pour */
 #define APP_QR_SCAN_TIMEOUT_MS       15000U  /* C 区二维码最长等待时间，超时使用默认位置 */
-#define APP_QR_SCAN_B_TIMEOUT_MS     300U  /* B 区覆盖 +90~+70 度搜索所需的最长等待时间 */
+#define APP_QR_SCAN_B_TIMEOUT_MS    60000U  /* B 区扫码窗口，水平云台在 -100~-80 度搜索 */
 #define APP_ROUTE_C_MAX_WAYPOINTS       24U  /* 8 个目标按 QR 顺序运行时所需的目标点和环路拐角上限 */
 #define APP_VISION_NO_RX_SEARCH_DELAY_MS 2000U /* send 后无上位机消息时，延时后启动摄像头搜索 */
 #define APP_VISION_CAMERA_SEARCH_DWELL_MS 2000U /* 摄像头搜索每个固定角度停留时间 */
@@ -35,8 +35,9 @@
 #define APP_QR_CAMERA_SCAN_END_DEG    80.0f  /* 二维码相机第三档俯仰角 */
 #define APP_QR_GIMBAL_LEFT_DEG       -20.0f  /* 二维码搜索左侧最大角度 */
 #define APP_QR_GIMBAL_RIGHT_DEG       20.0f  /* 二维码搜索右侧最大角度 */
-#define APP_QR_GIMBAL_B_MIN_DEG       70.0f  /* B 区二维码搜索的水平云台下限 */
-#define APP_QR_GIMBAL_B_MAX_DEG       130.0f  /* B 区二维码搜索的水平云台上限 */
+#define APP_QR_GIMBAL_B_MIN_DEG      -100.0f  /* B 区二维码搜索的水平云台下限 */
+#define APP_QR_GIMBAL_B_CENTER_DEG    -90.0f  /* B 区二维码搜索的起始角度 */
+#define APP_QR_GIMBAL_B_MAX_DEG       -80.0f  /* B 区二维码搜索的水平云台上限 */
 #define APP_QR_GIMBAL_STEP_DEG         5.0f  /* 二维码搜索水平云台每次步进 */
 #define APP_QR_SCAN_ANGLE_DWELL_MS   1500U    /* 二维码扫描舵机每个角度停留时间，非阻塞等待 */
 #define APP_QR_SCAN_STEP_MS         (APP_QR_SCAN_ANGLE_DWELL_MS * 3U)
@@ -49,7 +50,7 @@
 #define APP_B_TOF_SPEED_MM_S          50.0f   /* B 区校准速度保持原值，避免 C 区降速影响 B 区 */
 #define APP_B_TOF_TOLERANCE_MM        50.0f   /* B 区允许误差为正负 5cm */
 #define APP_B_TOF_Y_TARGET_MM         200.0f   /* 车头朝 0° 时，车尾 TOF 到后方挡板的目标距离；达标后将 Y 标定为 0 */
-#define APP_B_TOF_X_TARGET_MM        1300.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
+#define APP_B_TOF_X_TARGET_MM        1350.0f   /* 前 TOF 的 X 校准目标暂定 2000mm，待实测确认；达标后将 X 置 -950 */
 #define APP_ROUTE_A_REVERSE_HEADING_BIAS_RAD (0.6f * PI / 180.0f) /* A 区末段长距离倒车向 +90° 方向补偿 0.6° */
 #define APP_QR_SCAN_LEFT              0U     /* 扫码云台阶段：从中位左转到 -20 度 */
 #define APP_QR_SCAN_CENTER_FROM_LEFT  1U     /* 扫码云台阶段：从左侧回中 */
@@ -189,16 +190,17 @@ static const AppWaypoint_t k_route_a[] = {
     WAYPOINT(-2600.0f, 0.0f, PI/2, false),
 };
 
-/* B 区首点用于扫码，后续点沿同一竖直通道向下依次抓取。 */
+/* B 区首点只扫码；随后按 1、5、2、6、3、7、4、8 抓取，每棵树抓两个果子。 */
 static const AppWaypoint_t k_route_b[] = {
-    WAYPOINT_NO_ACT(-950.0f, 2150.0f, PI),
-    WAYPOINT_SIDE(-950.0f, 1950.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f, 1700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f, 1500.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f, 1200.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f, 1000.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f,  700.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f,  500.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_NO_ACT(-950.0f, 2250.0f, PI),
+    WAYPOINT_SIDE(-950.0f, 2250.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 2050.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1800.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1600.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1300.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1100.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f,  800.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f,  600.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -281,7 +283,7 @@ void App_SetMode(AppMode_t mode)
     if (mode == APP_MODE_SCAN_B || mode == APP_MODE_SCAN_C) {
         s_qr_scan_started = false;
         s_qr_scan_phase = APP_QR_SCAN_LEFT;
-        s_qr_gimbal_angle = (mode == APP_MODE_SCAN_B) ? APP_QR_GIMBAL_B_MAX_DEG : 0.0f;
+        s_qr_gimbal_angle = (mode == APP_MODE_SCAN_B) ? APP_QR_GIMBAL_B_CENTER_DEG : 0.0f;
         s_qr_scan_step_start_tick = 0U;
         s_qr_scan_step_deadline = 0U;
     }
@@ -312,7 +314,9 @@ static void App_SendVisionTask(void)
     s_grab_done = false;
     UpperCP_SendTask("send");
 
-    if (g_app_mode == APP_MODE_ROUTE_A || g_app_mode == APP_MODE_ROUTE_C) {
+    if (g_app_mode == APP_MODE_ROUTE_A ||
+        g_app_mode == APP_MODE_SCAN_B ||
+        g_app_mode == APP_MODE_ROUTE_C) {
         s_vision_camera_search_active = true;
         s_vision_send_tick = HAL_GetTick();
         s_vision_send_rx_count = UpperCP_GetRxCount();
@@ -352,6 +356,30 @@ static void App_QrScanSweepTick(void)
 {
     uint32_t now = HAL_GetTick();
 
+    if (g_app_mode == APP_MODE_SCAN_B) {
+        /* B 区只改水平云台，前置摄像头保持原角度不动。 */
+        if ((int32_t)(now - s_qr_scan_step_deadline) < 0) {
+            return;
+        }
+
+        s_qr_scan_step_start_tick = now;
+        s_qr_scan_step_deadline = now + APP_QR_SCAN_ANGLE_DWELL_MS;
+
+        /* 只使用 -90°、-80°、-100° 三个扫码位置循环搜索。 */
+        if (s_qr_scan_phase == APP_QR_SCAN_LEFT) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_B_MAX_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_LEFT;
+        } else if (s_qr_scan_phase == APP_QR_SCAN_CENTER_FROM_LEFT) {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_B_MIN_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_RIGHT;
+        } else {
+            s_qr_gimbal_angle = APP_QR_GIMBAL_B_CENTER_DEG;
+            s_qr_scan_phase = APP_QR_SCAN_LEFT;
+        }
+        (void)PCA9685_Set360Angle(3U, s_qr_gimbal_angle);
+        return;
+    }
+
     if ((int32_t)(now - s_qr_scan_step_deadline) < 0) {
         uint32_t elapsed = now - s_qr_scan_step_start_tick;
 
@@ -368,25 +396,6 @@ static void App_QrScanSweepTick(void)
     s_qr_scan_step_start_tick = now;
     s_qr_scan_step_deadline = now + APP_QR_SCAN_STEP_MS;
     (void)PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
-
-    if (g_app_mode == APP_MODE_SCAN_B) {
-        /* B 区在右侧视野内往返搜索，不允许超过水平云台 +90 度机械上限。 */
-        if (s_qr_scan_phase == APP_QR_SCAN_LEFT) {
-            s_qr_gimbal_angle -= APP_QR_GIMBAL_STEP_DEG;
-            if (s_qr_gimbal_angle <= APP_QR_GIMBAL_B_MIN_DEG) {
-                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MIN_DEG;
-                s_qr_scan_phase = APP_QR_SCAN_CENTER_FROM_LEFT;
-            }
-        } else {
-            s_qr_gimbal_angle += APP_QR_GIMBAL_STEP_DEG;
-            if (s_qr_gimbal_angle >= APP_QR_GIMBAL_B_MAX_DEG) {
-                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MAX_DEG;
-                s_qr_scan_phase = APP_QR_SCAN_LEFT;
-            }
-        }
-        (void)PCA9685_Set360Angle(3U, s_qr_gimbal_angle);
-        return;
-    }
 
     switch (s_qr_scan_phase) {
     case APP_QR_SCAN_LEFT:
@@ -454,11 +463,10 @@ void vofaRxbyte(uint8_t data)
         App_SetMode(APP_MODE_IDLE);
     }
     else if (data == 's' || data == 'S') {
-        /* 保留原测试入口：下一次 Task07 Tick 将云台置为测试角度后回到空闲。 */
+        /* B 区校准测试入口：下一次 Task07 Tick 从当前物理位置直接开始校准。 */
         s_app_running = 1;
         s_stop_requested = 0;
-        // App_SetMode(APP_MODE_TEST);
-         App_SetMode(APP_MODE_SCAN_C);
+        App_SetMode(APP_MODE_TEST);
     }
 }
 /**
@@ -503,7 +511,10 @@ void App_RunCurrentMode(void)
             //     Chassis_SetSpeed(0.0f,0.0f);
 
 
-            Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM, g_hwt101_yaw);
+            /* 直接测试 B 区时，当前物理朝向应对应导航坐标 -90°。
+             * Get_zeroYaw = 原始角度 - 零偏，因此零偏应设置为原始角度 + 90°。 */
+            Navigation_Reset(NAV_START_CENTER_X_MM, NAV_START_CENTER_Y_MM,
+                             Navigation_NormalizeDeg(g_hwt101_yaw - 90.0f));
                Move_Pos(27.0f);
                osDelay(1500);
             App_SetMode(APP_MODE_CALIBRATE_B);
@@ -544,27 +555,25 @@ void App_RunCurrentMode(void)
                 if (ActionScheduler_IsGimbalBusy()) {
                     break;
                 }
-                if (fabsf(PCA9685_Get180Angle(3U) - APP_QR_GIMBAL_B_MAX_DEG) > 0.1f) {
-                    /* 先安全抬升并平滑转到 +90 度，到位后再开始扫码。 */
-                    ActionScheduler_StartGimbalMove(APP_QR_GIMBAL_B_MAX_DEG, 1000U);
+                if (fabsf(PCA9685_Get180Angle(3U) - APP_QR_GIMBAL_B_CENTER_DEG) > 0.1f) {
+                    /* 底盘到点停车后，先安全抬升并平滑转到 -90 度。 */
+                    ActionScheduler_StartGimbalMove(APP_QR_GIMBAL_B_CENTER_DEG, 1000U);
                     break;
                 }
 
-                UpperCP_ResetQrResult();
-                PCA9685_Set270Angle(APP_QR_CAMERA_SCAN_START_DEG);
+                UpperCP_ResetBQrResult();
                 s_qr_scan_phase = APP_QR_SCAN_LEFT;
-                s_qr_gimbal_angle = APP_QR_GIMBAL_B_MAX_DEG;
+                s_qr_gimbal_angle = APP_QR_GIMBAL_B_CENTER_DEG;
                 s_qr_scan_step_start_tick = HAL_GetTick();
-                s_qr_scan_step_deadline = s_qr_scan_step_start_tick + APP_QR_SCAN_STEP_MS;
-                UpperCP_SendTask("scan");
+                s_qr_scan_step_deadline = s_qr_scan_step_start_tick + APP_QR_SCAN_ANGLE_DWELL_MS;
+                UpperCP_SendTask("scanb");
                 s_qr_scan_deadline = HAL_GetTick() + APP_QR_SCAN_B_TIMEOUT_MS;
                 s_qr_scan_started = true;
                 break;
             }
 
-            if (((CameraFlag != 0U) && (fruits_count == 8U)) ||
+            if ((b_fruits_count == 8U) ||
                 ((int32_t)(HAL_GetTick() - s_qr_scan_deadline) >= 0)) {
-                PCA9685_Set270Angle(APP_CAMERA_CENTER_DEG);
                 /* 首点只用于扫码，抓取路线从第二个点开始。 */
                 App_StartRoute(&k_route_b[1], APP_ROUTE_LEN(k_route_b) - 1U, APP_MODE_BACK);
             } else {
@@ -733,15 +742,15 @@ static void App_RouteTick(void)
             /* B 区正负侧都先抓高处，第二次再回同侧抓低处。 */
             ActionScheduler_StartGimbalMove(
                 (s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U ?
-                APP_B_GRAB_GIMBAL_DEG : -APP_B_GRAB_GIMBAL_DEG, 1600U);
+                APP_B_GRAB_GIMBAL_DEG : -APP_B_GRAB_GIMBAL_DEG, 2000U);
             s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
         } else if ((s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U) {
             /* 当前点需要正向视野：先处理 +90 度侧。 */
-            ActionScheduler_StartGimbalMove(90.0f, 1000U);
+            ActionScheduler_StartGimbalMove(90.0f, 1200U);
             s_route_state = APP_ROUTE_FIRST_WAIT_GIMBAL;
         } else {
             /* 当前点只有反向目标：跳过正向视野，直接转到 -90 度侧。 */
-            ActionScheduler_StartGimbalMove(-90.0f, 1200U);
+            ActionScheduler_StartGimbalMove(-90.0f, 1600U);
             s_route_state = APP_ROUTE_SECOND_WAIT_GIMBAL;
         }
         App_RouteSetDelay(400U);
