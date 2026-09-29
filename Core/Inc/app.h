@@ -25,7 +25,7 @@ typedef enum {
 #define APP_ACTION_POSITIVE  0x01U
 #define APP_ACTION_NEGATIVE  0x02U
 #define APP_CAMERA_CENTER_DEG 40.0f
-#define APP_B_GRAB_GIMBAL_DEG 120.0f /* B 区各抓取点的云台基准角绝对值 */
+#define APP_B_GRAB_GIMBAL_DEG  50.0f /* B 区各抓取点的云台基准角绝对值 */
 #define APP_B_GRAB_ALIGN_DEG   10.0f /* B 区相对基准角的双向微调范围 */
 
 /**
@@ -77,6 +77,16 @@ bool App_IsRunning(void);
  * @brief 通知当前航线任务：上位机已完成一次抓取。
  */
 void App_NotifyGrabDone(void);
+
+/**
+ * @brief 通知当前航线任务：上位机已跳过本次抓取。
+ */
+void App_NotifyGrabSkipped(void);
+
+/**
+ * @brief 查询 B 区是否正在等待同一棵树上方水果的抓取结果。
+ */
+bool App_IsWaitingForBUpperGrab(void);
 
 /**
  * @brief 串口指令接收处理函数，用于解析外部启动/停止指令

@@ -75,6 +75,7 @@ volatile bool g_enable_grasp_logic =1;
 volatile bool s_app_running;           /* 应用路线运行标志：true 表示当前有路线任务在执行，停止或路线结束后清零 */
 volatile bool s_stop_requested;        /* 外部停止请求标志：按键/指令请求停车后置位，App_RunCurrentMode() 统一执行停止并清零 */
 static volatile bool s_grab_done;      /* 视觉抓取完成标志：ActionScheduler 完成一次 send/arm 处理后置位，路线状态机等待它继续下一步 */
+static volatile bool s_grab_skipped;   /* 本次完成是否由 arm:5 跳过触发，用于 B 区上下水果分流 */
 static const AppWaypoint_t *s_route;   /* 当前执行路线指针：A/B 指向常量路线，C/返程可指向 s_dynamic_route 动态路线副本 */
 static AppWaypoint_t s_dynamic_route[APP_ROUTE_C_MAX_WAYPOINTS]; /* C 区二维码顺序或返程临时路线缓存，避免使用函数栈数组 */
 static uint8_t s_route_len;            /* 当前路线的航点总数，用于判断 s_route_index 是否已经跑完 */
@@ -130,7 +131,7 @@ typedef enum {
     /* C 区倒料点已发送 pour，等待 2 秒后继续下一航点。 */
 
     APP_ROUTE_FIRST_WAIT_LIFT,
-    /* 作业点先抬升到 27cm；B 区转到该点的正/负120度，其他区按视野方向转动。 */
+    /* 作业点先抬升到 27cm；B 区转到该点的正/负20度，其他区按视野方向转动。 */
 
     APP_ROUTE_FIRST_WAIT_GIMBAL,
     /* 等待首次云台转动结束；B 区直接抓高处，其他区先下降。 */
@@ -145,7 +146,7 @@ typedef enum {
     /* 第一次视野完成：已再次抬升到 25cm，等待到位后转向 -90度。 */
 
     APP_ROUTE_SECOND_WAIT_GIMBAL,
-    /* 等待第二次云台转动结束；B 区回同侧120度，其他区转到-90度。 */
+    /* 等待第二次云台转动结束；B 区回同侧20度，其他区转到-90度。 */
 
     APP_ROUTE_SECOND_WAIT_LOWER,
     /* B 区降至10cm，其他区降至2cm，等待稳定后发送第二次 send。 */
@@ -193,14 +194,14 @@ static const AppWaypoint_t k_route_a[] = {
 /* B 区首点只扫码；随后按 1、5、2、6、3、7、4、8 抓取，每棵树抓两个果子。 */
 static const AppWaypoint_t k_route_b[] = {
     WAYPOINT_NO_ACT(-950.0f, 2250.0f, PI),
-    WAYPOINT_SIDE(-950.0f, 2250.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f, 2050.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f, 1800.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f, 1600.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f, 1300.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f, 1100.0f, PI, APP_ACTION_NEGATIVE),
-    WAYPOINT_SIDE(-950.0f,  800.0f, PI, APP_ACTION_POSITIVE),
-    WAYPOINT_SIDE(-950.0f,  600.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1850.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1650.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f, 1400.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 1200.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f,900.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f, 700.0f, PI, APP_ACTION_NEGATIVE),
+    WAYPOINT_SIDE(-950.0f,  400.0f, PI, APP_ACTION_POSITIVE),
+    WAYPOINT_SIDE(-950.0f,  200.0f, PI, APP_ACTION_NEGATIVE),
 };
 
 /* 航线 C 的目标路径点序列 */
@@ -252,6 +253,7 @@ void App_Init(void)
     s_app_running = false;
     s_stop_requested = false;
     s_grab_done = false;
+    s_grab_skipped = false;
     s_route = NULL;
     s_route_state = APP_ROUTE_IDLE;
     s_qr_scan_started = false;
@@ -312,6 +314,7 @@ static void App_VisionCameraSearchReset(void)
 static void App_SendVisionTask(void)
 {
     s_grab_done = false;
+    s_grab_skipped = false;
     UpperCP_SendTask("send");
 
     if (g_app_mode == APP_MODE_ROUTE_A ||
@@ -787,6 +790,13 @@ static void App_RouteTick(void)
         }
 
         if (g_app_mode == APP_MODE_SCAN_B) {
+            if (s_grab_skipped) {
+                /* 上方水果跳过后保持当前云台方向，直接下降抓同一棵树的下方水果。 */
+                Move_Pos(10.0f);
+                s_route_state = APP_ROUTE_SECOND_WAIT_LOWER;
+                App_RouteSetDelay(APP_ROUTE_LOWER_SETTLE_MS);
+                return;
+            }
             /* 高处抓取并回中放果后，先回同侧基准角，再下降抓低处。 */
             ActionScheduler_StartGimbalMove(
                 (s_route[s_route_index].action_mask & APP_ACTION_POSITIVE) != 0U ?
@@ -820,7 +830,7 @@ static void App_RouteTick(void)
             return;
         }
         if (g_app_mode == APP_MODE_SCAN_B) {
-            /* B 区第二次保持同侧 120 度，到位后下降至 10cm。 */
+            /* B 区第二次保持同侧 20 度，到位后下降至 10cm。 */
             Move_Pos(10.0f);
         } else {
             Move_Pos(2.0f);
@@ -870,7 +880,21 @@ static void App_RouteTick(void)
 void App_NotifyGrabDone(void)
 {
     /* 由 ActionScheduler 在动作结束时调用；这里只置位，不能做阻塞操作。 */
+    s_grab_skipped = false;
     s_grab_done = true;
+}
+
+void App_NotifyGrabSkipped(void)
+{
+    /* 跳过结果由路线状态机决定是继续同树下方水果，还是归位后去下一点。 */
+    s_grab_skipped = true;
+    s_grab_done = true;
+}
+
+bool App_IsWaitingForBUpperGrab(void)
+{
+    return g_app_mode == APP_MODE_SCAN_B &&
+           s_route_state == APP_ROUTE_WAIT_GRAB_FIRST;
 }
 
 /**

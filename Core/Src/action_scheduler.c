@@ -58,9 +58,9 @@
  *
  * arm 命令约定：
  * - arm:0 正常果抓取：测距 -> 开爪 -> 伸臂 -> 闭爪 -> 收臂/抬升/回中/放果；
- * - arm:1/2 视觉水平微调：云台每次小角度左/右转；向外到 120 度后前移，向内回转到 80 度后后退；
+ * - arm:1/2 视觉水平微调：云台每次小角度左/右转；到当前区域限位后由底盘前后移动；
  * - arm:3/4 视觉垂直微调：升降台上/下移动 1cm；
- * - arm:5 跳过目标：不抓取，执行收臂、抬升、云台切视野/回中，然后通知路线继续；
+ * - arm:5 跳过目标：B 区上方收臂后直接下降抓下方，其余情况抬升并回中后继续；
  * - arm:6 坏果处理：抓取后向中位移动15度并释放，再收臂、抬升、回中。
  */
 typedef enum {
@@ -96,6 +96,9 @@ typedef enum {
 
     ACTION_SKIP_WAIT_EXTEND,
     /* 跳过目标时已下发收臂；等待 ARM_RETRACT_SETTLE_MS 后升降台抬升。 */
+
+    ACTION_SKIP_B_UPPER_WAIT_EXTEND,
+    /* B 区上方水果跳过时只等待收臂，随后保持当前云台方向并通知路线下降。 */
 
     ACTION_SKIP_WAIT_ROTATE,
     /* 跳过目标时云台正在切视野或回中；插补完成并停稳后通知路线跳至下一个任务。 */
@@ -156,6 +159,7 @@ static const char *ActionScheduler_StateName(ActionState_t state)
     case ACTION_PUT_WAIT_OPEN:       return "PUT_OPEN";
     case ACTION_SKIP_WAIT_LIFT:      return "SKIP_LIFT";
     case ACTION_SKIP_WAIT_EXTEND:    return "SKIP_EXTEND";
+    case ACTION_SKIP_B_UPPER_WAIT_EXTEND: return "SKIP_B_UPPER";
     case ACTION_SKIP_WAIT_ROTATE:    return "SKIP_ROTATE";
     case ACTION_BAD_WAIT_DISTANCE:   return "BAD_DISTANCE";
     case ACTION_BAD_WAIT_OPEN:       return "BAD_OPEN";
@@ -279,9 +283,10 @@ static void ActionScheduler_StartPut(ActionState_t first_state)
 
 static void ActionScheduler_StartSkip(void)
 {
-    /* 跳过目标也遵循“先收臂、再抬升、后转云台”的机械安全顺序。 */
+    /* B 区上方跳过后只收臂，路线会保持当前云台方向并直接下降抓下方。 */
     (void)PCA9685_Set180Angle(6U, ARM_EXTEND_MIN_ANGLE_DEG);
-    s_state = ACTION_SKIP_WAIT_EXTEND;
+    s_state = App_IsWaitingForBUpperGrab() ?
+        ACTION_SKIP_B_UPPER_WAIT_EXTEND : ACTION_SKIP_WAIT_EXTEND;
     ActionScheduler_SetDeadline(ARM_RETRACT_SETTLE_MS);
 }
 
@@ -414,7 +419,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
          * - arm:2 向正方向微调云台；
          * - 向外到 +/-120° 极限还没对准时，让底盘前移重新获得视野；
          * - 从 +90° 回到 +80°，或从 -90° 回到 -80° 后，不再转云台，改用底盘后退。
-         * - B 区改为同侧 120° 基准双向各 10°，外限前移、内限后退。
+         * - B 区使用同侧 20° 基准双向各 10°，外限前移、内限后退。
          */
         use_chassis_align = false;
         chassis_dir = 1U;
@@ -474,7 +479,7 @@ void ActionScheduler_RequestVisionArm(uint8_t command)
         ActionScheduler_SetDeadline(ARM_TOF_SETTLE_MS);
         ActionScheduler_Debug("GRAB_START", command);
     } else if (command == 5U) {
-        /* 跳过目标：升至安全高度后收臂、云台回中，再通知路线继续。 */
+        /* 跳过目标：B 区上方只收臂后下降，其余情况抬升并回中。 */
         s_retry_count = 0U;
         ActionScheduler_StartSkip();
         ActionScheduler_Debug("SKIP_START", command);
@@ -606,11 +611,17 @@ void ActionScheduler_Tick(void)
         ActionScheduler_Debug("SKIP_CENTER", 5U);
         break;
     case ACTION_SKIP_WAIT_EXTEND:
-        /* 跳过目标时先收臂完成，再升到10cm，最后才转云台。 */
+        /* 普通跳过先收臂完成，再升到27cm，最后转云台归位。 */
         Move_Pos(27.0f);
         s_state = ACTION_SKIP_WAIT_LIFT;
         ActionScheduler_SetDeadline(ARM_PUT_LIFT_SETTLE_MS);
         ActionScheduler_Debug("SKIP_LIFT", 5U);
+        break;
+    case ACTION_SKIP_B_UPPER_WAIT_EXTEND:
+        /* B 区上方跳过已完成收臂，保持当前角度并让路线直接下降抓下方。 */
+        s_state = ACTION_IDLE;
+        ActionScheduler_Debug("SKIP_B_UPPER_DONE", 5U);
+        App_NotifyGrabSkipped();
         break;
     case ACTION_SKIP_WAIT_ROTATE:
         /* 跳过动作完整结束；路线状态机的 s_grab_done 将被置位。 */
@@ -623,7 +634,7 @@ void ActionScheduler_Tick(void)
         }
         s_state = ACTION_IDLE;
         ActionScheduler_Debug("SKIP_DONE", 5U);
-        App_NotifyGrabDone();
+        App_NotifyGrabSkipped();
         break;
     case ACTION_BAD_WAIT_DISTANCE:
         /* 抓取前先开爪，避免夹爪闭合状态下直接伸向坏果。 */
